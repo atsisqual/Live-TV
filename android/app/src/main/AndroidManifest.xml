@@ -6,6 +6,7 @@
         android:allowBackup="true"
         android:hardwareAccelerated="true"
         android:label="Live TV"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
