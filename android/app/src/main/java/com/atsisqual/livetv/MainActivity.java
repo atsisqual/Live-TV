@@ -189,8 +189,12 @@ public class MainActivity extends Activity {
     }
 
     private boolean matchesAny(String host, Set<String> rules) {
-        for (String rule : rules) {
-            if (domainMatches(host, rule)) return true;
+        String candidate = host;
+        while (candidate != null && !candidate.isEmpty()) {
+            if (rules.contains(candidate)) return true;
+            int dot = candidate.indexOf('.');
+            if (dot < 0) break;
+            candidate = candidate.substring(dot + 1);
         }
         return false;
     }
