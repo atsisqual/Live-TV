@@ -1,0 +1,1 @@
+My TV List supports manual channel URLs and pasted M3U lists. User-added entries are stored locally.
