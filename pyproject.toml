@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "live-tv-embed-auditor"
 version = "0.1.0"
-description = "Allowlist-based crawler for auditing authorized web-player embeds"
+description = "Offline HTML embed auditor for authorized web-player integrations"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
