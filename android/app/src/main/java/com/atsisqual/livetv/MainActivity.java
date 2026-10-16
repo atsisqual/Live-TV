@@ -8,6 +8,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,6 +19,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -40,23 +42,24 @@ public class MainActivity extends Activity {
 
     private static final class Channel {
         final String name, url;
-        final boolean custom;
-        Channel(String name, String url, boolean custom) {
+        final boolean custom, embed;
+        Channel(String name, String url, boolean custom, boolean embed) {
             this.name = name;
             this.url = url;
             this.custom = custom;
+            this.embed = embed;
         }
     }
 
     private static final List<Channel> BUILT_INS = Arrays.asList(
-            new Channel("RTP 1", "https://www.rtp.pt/play/direto/rtp1", false),
-            new Channel("RTP 2", "https://www.rtp.pt/play/direto/rtp2", false),
-            new Channel("RTP Notícias", "https://www.rtp.pt/play/direto/rtp3", false),
-            new Channel("RTP Memória", "https://www.rtp.pt/play/direto/rtpmemoria", false),
-            new Channel("RTP Açores", "https://www.rtp.pt/play/direto/rtpacores", false),
-            new Channel("RTP Madeira", "https://www.rtp.pt/play/direto/rtpmadeira", false),
-            new Channel("RTP África", "https://www.rtp.pt/play/direto/rtpafrica", false),
-            new Channel("RTP Mundo", "https://www.rtp.pt/play/direto/rtpinternacional", false)
+            new Channel("RTP 1", "https://www.rtp.pt/play/direto/rtp1", false, false),
+            new Channel("RTP 2", "https://www.rtp.pt/play/direto/rtp2", false, false),
+            new Channel("RTP Notícias", "https://www.rtp.pt/play/direto/rtp3", false, false),
+            new Channel("RTP Memória", "https://www.rtp.pt/play/direto/rtpmemoria", false, false),
+            new Channel("RTP Açores", "https://www.rtp.pt/play/direto/rtpacores", false, false),
+            new Channel("RTP Madeira", "https://www.rtp.pt/play/direto/rtpmadeira", false, false),
+            new Channel("RTP África", "https://www.rtp.pt/play/direto/rtpafrica", false, false),
+            new Channel("RTP Mundo", "https://www.rtp.pt/play/direto/rtpinternacional", false, false)
     );
 
     private final List<Channel> customChannels = new ArrayList<>();
@@ -157,8 +160,21 @@ public class MainActivity extends Activity {
 
     private void play(Channel c) {
         active = c;
-        title.setText(c.name + (c.custom ? " • My List" : ""));
-        web.loadUrl(c.url);
+        title.setText(c.name + (c.custom ? (c.embed ? " • Iframe" : " • My List") : ""));
+        if (c.custom && c.embed) loadIframePlayer(c.url);
+        else web.loadUrl(c.url);
+    }
+
+    private void loadIframePlayer(String url) {
+        String safeUrl = TextUtils.htmlEncode(url);
+        String html = "<!doctype html><html><head>"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no\">"
+                + "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}"
+                + "iframe{border:0;width:100%;height:100%;display:block;background:#000}</style>"
+                + "</head><body><iframe src=\"" + safeUrl + "\" "
+                + "allow=\"autoplay; fullscreen; picture-in-picture; encrypted-media\" "
+                + "allowfullscreen referrerpolicy=\"no-referrer-when-downgrade\"></iframe></body></html>";
+        web.loadDataWithBaseURL("https://live-tv.local/", html, "text/html", "UTF-8", null);
     }
 
     private void rebuildButtons() {
@@ -217,13 +233,17 @@ public class MainActivity extends Activity {
         EditText name = new EditText(this); name.setHint("Channel name"); f.addView(name);
         EditText url = new EditText(this); url.setHint("https://example.com/player");
         url.setSingleLine(true); url.setInputType(InputType.TYPE_TEXT_VARIATION_URI); f.addView(url);
+        CheckBox embed = new CheckBox(this);
+        embed.setText("Open inside iframe player");
+        embed.setChecked(true);
+        f.addView(embed);
         AlertDialog dlg = new AlertDialog.Builder(this).setTitle("Add channel").setView(scroll(f))
                 .setPositiveButton("Add", null).setNegativeButton("Cancel", null).create();
         dlg.setOnShowListener(x -> dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String n = name.getText().toString().trim(), u = url.getText().toString().trim();
             if (n.isEmpty()) { name.setError("Enter a name"); return; }
             if (!validUrl(u)) { url.setError("Enter an http:// or https:// URL"); return; }
-            Channel c = new Channel(n, u, true); customChannels.add(c); saveChannels(); rebuildButtons(); play(c); dlg.dismiss();
+            Channel c = new Channel(n, u, true, embed.isChecked()); customChannels.add(c); saveChannels(); rebuildButtons(); play(c); dlg.dismiss();
         }));
         dlg.show();
     }
@@ -266,14 +286,14 @@ public class MainActivity extends Activity {
             if (line.startsWith("#")) continue;
             if (validUrl(line)) {
                 String host = Uri.parse(line).getHost();
-                out.add(new Channel(pending == null || pending.isEmpty() ? (host == null ? "Channel" : host) : pending, line, true));
+                out.add(new Channel(pending == null || pending.isEmpty() ? (host == null ? "Channel" : host) : pending, line, true, true));
                 pending = null;
                 continue;
             }
             int bar = line.indexOf('|');
             if (bar > 0) {
                 String n = line.substring(0, bar).trim(), u = line.substring(bar + 1).trim();
-                if (!n.isEmpty() && validUrl(u)) out.add(new Channel(n, u, true));
+                if (!n.isEmpty() && validUrl(u)) out.add(new Channel(n, u, true, true));
             }
         }
         return out;
@@ -314,7 +334,8 @@ public class MainActivity extends Activity {
             for (int i = 0; i < a.length(); i++) {
                 JSONObject o = a.getJSONObject(i);
                 String n = o.optString("name").trim(), u = o.optString("url").trim();
-                if (!n.isEmpty() && validUrl(u)) customChannels.add(new Channel(n, u, true));
+                boolean embed = o.optBoolean("embed", true);
+                if (!n.isEmpty() && validUrl(u)) customChannels.add(new Channel(n, u, true, embed));
             }
         } catch (Exception ignored) { customChannels.clear(); }
     }
@@ -322,7 +343,7 @@ public class MainActivity extends Activity {
     private void saveChannels() {
         JSONArray a = new JSONArray();
         for (Channel c : customChannels) {
-            try { JSONObject o = new JSONObject(); o.put("name", c.name); o.put("url", c.url); a.put(o); } catch (Exception ignored) {}
+            try { JSONObject o = new JSONObject(); o.put("name", c.name); o.put("url", c.url); o.put("embed", c.embed); a.put(o); } catch (Exception ignored) {}
         }
         SharedPreferences.Editor e = getSharedPreferences(PREFS, MODE_PRIVATE).edit();
         e.putString(KEY_CHANNELS, a.toString()).apply();
