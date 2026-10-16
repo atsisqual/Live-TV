@@ -1,6 +1,7 @@
 package com.atsisqual.livetv;
 
 import android.app.Activity;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -14,17 +15,57 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.IDN;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.List;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final List<String> BLOCKED_HOSTS = Arrays.asList(
+    private static final String FILTER_URL =
+            "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt";
+    private static final String FILTER_FILE = "adguard-dns-filter.txt";
+    private static final String PREFS = "live_tv_adblock";
+    private static final String KEY_FILTER_UPDATED = "filter_updated_at";
+    private static final long FILTER_REFRESH_MS = 24L * 60L * 60L * 1000L;
+
+    private static final Set<String> FORCED_BLOCKED_HOSTS = unmodifiableSet(
             "dlhd.st",
             "histats.com",
-            "crwdcntrl.net"
+            "crwdcntrl.net",
+            "popcash.net",
+            "popads.net",
+            "acscdn.com",
+            "acscdn.net",
+            "dqqmfckpmfvkk.space",
+            "amung.us",
+            "serveproxy.com",
+            "comeumamao.monster",
+            "azureedgeglobalfastlycloudfrontondigitaloceanstackpathcdn.buzz"
     );
+
+    private static final Set<String> CORE_PLAYER_HOSTS = unmodifiableSet(
+            "apitotal.net",
+            "wideiptv.top",
+            "sportsonliine.click",
+            "rdembed.sbs",
+            "tossequip.net",
+            "rtp.pt"
+    );
+
+    private volatile Set<String> adGuardBlockedHosts = Collections.emptySet();
+    private volatile Set<String> adGuardAllowedHosts = Collections.emptySet();
 
     private FrameLayout root;
     private WebView web;
@@ -34,6 +75,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+
+        loadCachedFilter();
+        refreshFilterIfNeeded();
 
         root = new FrameLayout(this);
         web = new WebView(this);
@@ -65,9 +109,6 @@ public class MainActivity extends Activity {
                 Uri uri = request.getUrl();
                 if (isBlocked(uri)) return true;
 
-                // The local shell is the only normal top-level page. RTP built-ins are
-                // explicitly allowed to replace it; top-level navigations initiated by
-                // embedded players/ads are blocked so click-catchers cannot escape.
                 if (request.isForMainFrame() && isHttp(uri) && !isRtp(uri)) return true;
                 return false;
             }
@@ -90,8 +131,8 @@ public class MainActivity extends Activity {
 
         web.setWebChromeClient(new WebChromeClient() {
             @Override
-            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-                // Reject window.open(), target=_blank popups and popunders.
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
+                                          android.os.Message resultMsg) {
                 return false;
             }
 
@@ -121,22 +162,41 @@ public class MainActivity extends Activity {
     }
 
     private boolean isRtp(Uri uri) {
-        if (uri == null) return false;
-        String host = uri.getHost();
-        if (host == null) return false;
-        host = host.toLowerCase(Locale.ROOT);
-        return host.equals("rtp.pt") || host.endsWith(".rtp.pt");
+        String host = normalizedHost(uri);
+        return host != null && domainMatches(host, "rtp.pt");
     }
 
     private boolean isBlocked(Uri uri) {
-        if (uri == null) return false;
-        String host = uri.getHost();
+        String host = normalizedHost(uri);
         if (host == null) return false;
-        host = host.toLowerCase(Locale.ROOT);
-        for (String blocked : BLOCKED_HOSTS) {
-            if (host.equals(blocked) || host.endsWith("." + blocked)) return true;
+
+        if (matchesAny(host, FORCED_BLOCKED_HOSTS)) return true;
+        if (matchesAny(host, CORE_PLAYER_HOSTS)) return false;
+        if (matchesAny(host, adGuardAllowedHosts)) return false;
+        return matchesAny(host, adGuardBlockedHosts);
+    }
+
+    private String normalizedHost(Uri uri) {
+        if (uri == null) return null;
+        String host = uri.getHost();
+        if (host == null || host.trim().isEmpty()) return null;
+        host = host.trim().toLowerCase(Locale.ROOT);
+        try {
+            return IDN.toASCII(host).toLowerCase(Locale.ROOT);
+        } catch (Exception ignored) {
+            return host;
+        }
+    }
+
+    private boolean matchesAny(String host, Set<String> rules) {
+        for (String rule : rules) {
+            if (domainMatches(host, rule)) return true;
         }
         return false;
+    }
+
+    private boolean domainMatches(String host, String domain) {
+        return host.equals(domain) || host.endsWith("." + domain);
     }
 
     private WebResourceResponse emptyResponse() {
@@ -145,9 +205,150 @@ public class MainActivity extends Activity {
                 "UTF-8",
                 204,
                 "No Content",
-                java.util.Collections.emptyMap(),
+                Collections.emptyMap(),
                 new ByteArrayInputStream(new byte[0])
         );
+    }
+
+    private void loadCachedFilter() {
+        File file = new File(getFilesDir(), FILTER_FILE);
+        if (!file.isFile()) return;
+        try (InputStream input = new FileInputStream(file)) {
+            applyFilter(input);
+        } catch (Exception ignored) {
+            adGuardBlockedHosts = Collections.emptySet();
+            adGuardAllowedHosts = Collections.emptySet();
+        }
+    }
+
+    private void refreshFilterIfNeeded() {
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        long updatedAt = prefs.getLong(KEY_FILTER_UPDATED, 0L);
+        File target = new File(getFilesDir(), FILTER_FILE);
+        if (target.isFile() && System.currentTimeMillis() - updatedAt < FILTER_REFRESH_MS) return;
+
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            File temp = new File(getFilesDir(), FILTER_FILE + ".tmp");
+            try {
+                connection = (HttpURLConnection) new URL(FILTER_URL).openConnection();
+                connection.setConnectTimeout(10000);
+                connection.setReadTimeout(20000);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("User-Agent", "Live-TV/1.3.3 Android");
+
+                int status = connection.getResponseCode();
+                if (status < 200 || status >= 300) return;
+
+                try (InputStream input = connection.getInputStream();
+                     FileOutputStream output = new FileOutputStream(temp)) {
+                    byte[] buffer = new byte[16384];
+                    int read;
+                    while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+                    output.flush();
+                }
+
+                try (InputStream input = new FileInputStream(temp)) {
+                    applyFilter(input);
+                }
+
+                if (target.exists() && !target.delete()) return;
+                if (!temp.renameTo(target)) return;
+                prefs.edit().putLong(KEY_FILTER_UPDATED, System.currentTimeMillis()).apply();
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+                if (temp.exists() && !temp.equals(target)) temp.delete();
+            }
+        }, "AdGuardFilterRefresh").start();
+    }
+
+    private void applyFilter(InputStream input) throws Exception {
+        Set<String> blocked = new HashSet<>();
+        Set<String> allowed = new HashSet<>();
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(input, StandardCharsets.UTF_8))) {
+            String raw;
+            while ((raw = reader.readLine()) != null) {
+                parseRule(raw, blocked, allowed);
+            }
+        }
+
+        if (blocked.size() < 100) throw new IllegalStateException("AdGuard list too small");
+
+        adGuardBlockedHosts = Collections.unmodifiableSet(blocked);
+        adGuardAllowedHosts = Collections.unmodifiableSet(allowed);
+    }
+
+    private void parseRule(String raw, Set<String> blocked, Set<String> allowed) {
+        String line = raw == null ? "" : raw.trim();
+        if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || line.startsWith("#")) return;
+
+        boolean exception = false;
+        if (line.startsWith("@@")) {
+            exception = true;
+            line = line.substring(2);
+        }
+
+        int modifier = line.indexOf('$');
+        if (modifier >= 0) line = line.substring(0, modifier);
+
+        String domain = null;
+        if (line.startsWith("||")) {
+            domain = line.substring(2);
+            int cut = firstDelimiter(domain);
+            if (cut >= 0) domain = domain.substring(0, cut);
+        } else if (line.startsWith("0.0.0.0 ") || line.startsWith("127.0.0.1 ")) {
+            int space = line.indexOf(' ');
+            domain = line.substring(space + 1).trim();
+        } else if (looksLikePlainDomain(line)) {
+            domain = line;
+        }
+
+        domain = cleanDomain(domain);
+        if (domain == null) return;
+
+        if (exception) allowed.add(domain);
+        else blocked.add(domain);
+    }
+
+    private int firstDelimiter(String value) {
+        int best = -1;
+        char[] delimiters = {'^', '/', '|', '*'};
+        for (char delimiter : delimiters) {
+            int at = value.indexOf(delimiter);
+            if (at >= 0 && (best < 0 || at < best)) best = at;
+        }
+        return best;
+    }
+
+    private boolean looksLikePlainDomain(String value) {
+        return value.indexOf('.') > 0
+                && value.indexOf('/') < 0
+                && value.indexOf('*') < 0
+                && value.indexOf('^') < 0
+                && value.indexOf('|') < 0
+                && value.indexOf(' ') < 0;
+    }
+
+    private String cleanDomain(String value) {
+        if (value == null) return null;
+        String domain = value.trim().toLowerCase(Locale.ROOT);
+        while (domain.startsWith(".")) domain = domain.substring(1);
+        while (domain.endsWith(".")) domain = domain.substring(0, domain.length() - 1);
+        if (domain.isEmpty() || domain.equals("localhost") || domain.indexOf('.') < 0) return null;
+        try {
+            domain = IDN.toASCII(domain).toLowerCase(Locale.ROOT);
+        } catch (Exception ignored) {
+            return null;
+        }
+        if (!domain.matches("[a-z0-9._-]+")) return null;
+        return domain;
+    }
+
+    private static Set<String> unmodifiableSet(String... values) {
+        return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(values)));
     }
 
     private void exitFullscreen() {
