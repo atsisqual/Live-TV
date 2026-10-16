@@ -35,11 +35,14 @@ import java.util.Set;
 public class MainActivity extends Activity {
     private static final String FILTER_URL =
             "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt";
+    private static final String FILTER_ASSET = "adguard-dns-filter-bootstrap.txt";
     private static final String FILTER_FILE = "adguard-dns-filter.txt";
     private static final String PREFS = "live_tv_adblock";
     private static final String KEY_FILTER_UPDATED = "filter_updated_at";
     private static final long FILTER_REFRESH_MS = 24L * 60L * 60L * 1000L;
 
+    /* Always active from process start, before the dynamic AdGuard list is refreshed.
+       Includes domains observed in the 2026-10-17 Reqable HAR plus known popup/tracker hosts. */
     private static final Set<String> FORCED_BLOCKED_HOSTS = unmodifiableSet(
             "dlhd.st",
             "histats.com",
@@ -48,6 +51,43 @@ public class MainActivity extends Activity {
             "popads.net",
             "acscdn.com",
             "acscdn.net",
+            "adsco.re",
+            "adexchangerapid.com",
+            "adbpage.com",
+            "usrpubtrk.com",
+            "cdn4ads.com",
+            "premiumvertising.com",
+            "xadsmart.com",
+            "profitableratecpmnetwork.com",
+            "rtmark.net",
+            "asdfix.com",
+            "rbtget.com",
+            "rbtrgr.com",
+            "bluetier.top",
+            "rxfexvfreikpo.website",
+            "sootoarathus.net",
+            "bblaa.com",
+            "savantwaxwing.cyou",
+            "flushpersist.com",
+            "405kk.com",
+            "nangasynaxis.cyou",
+            "joltieregoizegametic.cyou",
+            "sospirochan.cyou",
+            "thirstacock.com",
+            "peckyspurned.cyou",
+            "ylowerhughester.org",
+            "thiaminspumous.qpon",
+            "skoutydeals.com",
+            "cowedd4855ws.sbs",
+            "484r.com",
+            "ay267.com",
+            "connatix.com",
+            "luugy.com",
+            "realizationnewestfangs.com",
+            "llvpn.com",
+            "portalfluently.com",
+            "protrafficinspector.com",
+            "briguefidibus.com",
             "dqqmfckpmfvkk.space",
             "amung.us",
             "serveproxy.com",
@@ -55,13 +95,24 @@ public class MainActivity extends Activity {
             "azureedgeglobalfastlycloudfrontondigitaloceanstackpathcdn.buzz"
     );
 
+    /* Hosts required by the page/player path. They are protected from broad public-list rules,
+       while the forced blacklist above still wins first. */
     private static final Set<String> CORE_PLAYER_HOSTS = unmodifiableSet(
             "apitotal.net",
             "wideiptv.top",
             "sportsonliine.click",
             "rdembed.sbs",
             "tossequip.net",
-            "rtp.pt"
+            "dembed.st",
+            "dlive.sx",
+            "dlstreams.st",
+            "rtp.pt",
+            "video-auth7.iol.pt",
+            "jwplayer.com",
+            "jwpcdn.com",
+            "jwpltx.com",
+            "groxtv.com",
+            "pull-live-156-1.global.ssl.fastly.net"
     );
 
     private volatile Set<String> adGuardBlockedHosts = Collections.emptySet();
@@ -76,6 +127,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
 
+        /* Bootstrap is packaged into the APK by the build. Cached newer copy wins when present. */
+        loadBundledFilter();
         loadCachedFilter();
         refreshFilterIfNeeded();
 
@@ -214,14 +267,21 @@ public class MainActivity extends Activity {
         );
     }
 
+    private void loadBundledFilter() {
+        try (InputStream input = getAssets().open(FILTER_ASSET)) {
+            applyFilter(input);
+        } catch (Exception ignored) {
+            /* The forced HAR-derived list remains active even if an asset is absent/corrupt. */
+        }
+    }
+
     private void loadCachedFilter() {
         File file = new File(getFilesDir(), FILTER_FILE);
         if (!file.isFile()) return;
         try (InputStream input = new FileInputStream(file)) {
             applyFilter(input);
         } catch (Exception ignored) {
-            adGuardBlockedHosts = Collections.emptySet();
-            adGuardAllowedHosts = Collections.emptySet();
+            /* Keep the bundled filter instead of clearing it on a bad cache. */
         }
     }
 
@@ -239,7 +299,7 @@ public class MainActivity extends Activity {
                 connection.setConnectTimeout(10000);
                 connection.setReadTimeout(20000);
                 connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "Live-TV/1.3.3 Android");
+                connection.setRequestProperty("User-Agent", "Live-TV/1.3.4 Android");
 
                 int status = connection.getResponseCode();
                 if (status < 200 || status >= 300) return;
