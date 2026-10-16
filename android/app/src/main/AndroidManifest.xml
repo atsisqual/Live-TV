@@ -7,7 +7,7 @@
         android:hardwareAccelerated="true"
         android:label="Live TV"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="false"
+        android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name=".MainActivity"
