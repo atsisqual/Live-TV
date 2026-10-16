@@ -1,0 +1,155 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Live TV</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#101114;color:#f4f4f5;font-family:system-ui,-apple-system,sans-serif}body{overflow:hidden}
+#home{height:100%;overflow:auto}header{position:sticky;top:0;z-index:2;background:#17181c;padding:16px;border-bottom:1px solid #2a2c32}h1{font-size:20px;margin:0 0 4px}small{color:#a7abb5}.wrap{padding:14px}.channels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.ch{background:#22242a;border:1px solid #353842;color:white;border-radius:12px;padding:16px;text-align:left;font-weight:650;font-size:15px}.ch.custom{border-color:#596175}.ch.missing{border-style:dashed;opacity:.78}.toolbar{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}button{background:#e9eaf0;color:#111;border:0;border-radius:10px;padding:11px 14px;font-weight:650}.secondary{background:#292c33;color:#fff}.danger{background:#55252a;color:#fff}.panel{display:none;background:#1b1d22;border:1px solid #30333b;border-radius:14px;padding:14px;margin:14px 0}.panel.show{display:block}input,textarea,select{width:100%;background:#0f1013;color:white;border:1px solid #3a3e47;border-radius:9px;padding:12px;margin:6px 0 10px;font:inherit}textarea{height:240px;resize:vertical}.hint{font-size:13px;color:#9da2ae;line-height:1.4}.pill{font-size:11px;background:#30343d;border-radius:999px;padding:3px 7px;margin-left:6px;color:#c7cad2}
+#player{display:none;position:fixed;inset:0;background:#000;z-index:20}#player.show{display:flex;flex-direction:column}.playerbar{height:52px;display:flex;align-items:center;gap:10px;padding:8px;background:#111;color:#fff}.playerbar button{padding:8px 12px}.ptitle{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:650}.framewrap{position:relative;flex:1;background:#000}.framewrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+</style>
+</head>
+<body>
+<div id="home">
+<header><h1>Live TV</h1><small>Import your own authorized TV list. Custom entries open inside an iframe player.</small></header>
+<div class="wrap">
+<div class="toolbar"><button onclick="toggle('add')">+ Add channel</button><button class="secondary" onclick="toggle('import')">Import TV list</button><button class="secondary" onclick="exportList()">Export JSON</button><button class="danger" onclick="clearCustom()">Clear custom</button></div>
+<div id="add" class="panel"><b>Add one channel</b><input id="n" placeholder="Channel name"><input id="u" placeholder="https://example.com/player"><button onclick="addOne()">Save channel</button></div>
+<div id="import" class="panel"><b>Import list</b><p class="hint">Supported: M3U, <code>Name | https://url</code>, JSON array, or an object containing <code>channels[]</code>. JSON entries without a URL are imported and shown as “sem URL”.</p><textarea id="list" placeholder="#EXTM3U&#10;#EXTINF:-1,My Channel&#10;https://example.com/player&#10;&#10;or JSON"></textarea><button onclick="importList()">Import</button></div>
+<h3>Channels</h3><div id="channels" class="channels"></div>
+</div></div>
+<div id="player">
+  <div class="playerbar"><button onclick="closePlayer()">← Back</button><div id="ptitle" class="ptitle"></div></div>
+  <div class="framewrap"><iframe id="frame" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+</div>
+<script>
+const built=[
+['RTP 1','https://www.rtp.pt/play/direto/rtp1'],['RTP 2','https://www.rtp.pt/play/direto/rtp2'],['RTP Notícias','https://www.rtp.pt/play/direto/rtp3'],['RTP Memória','https://www.rtp.pt/play/direto/rtpmemoria'],['RTP Açores','https://www.rtp.pt/play/direto/rtpacores'],['RTP Madeira','https://www.rtp.pt/play/direto/rtpmadeira'],['RTP África','https://www.rtp.pt/play/direto/rtpafrica'],['RTP Mundo','https://www.rtp.pt/play/direto/rtpinternacional']];
+
+function normalizeStored(x){
+  if(Array.isArray(x)) return {name:String(x[0]||'Channel').trim(),url:String(x[1]||'').trim()};
+  if(x&&typeof x==='object') return {
+    name:String(x.name||x.title||'Channel').trim(),
+    url:String(x.url||x.embed||x.player||'').trim(),
+    slug:String(x.slug||'').trim(),
+    epg_id:String(x.epg_id||x.epgId||'').trim(),
+    category:String(x.category||'').trim()
+  };
+  return null;
+}
+function load(){
+  try{
+    const raw=JSON.parse(localStorage.getItem('tv-custom')||'[]');
+    return Array.isArray(raw)?raw.map(normalizeStored).filter(Boolean):[];
+  }catch(e){return[]}
+}
+function save(x){localStorage.setItem('tv-custom',JSON.stringify(x));render()}
+function ok(u){return /^https?:\/\//i.test(String(u||''))}
+function normItem(x){return normalizeStored(x)}
+function openEmbed(name,url){
+  if(!ok(url)) return;
+  document.getElementById('ptitle').textContent=name;
+  document.getElementById('frame').src=url;
+  document.getElementById('player').classList.add('show')
+}
+function closePlayer(){document.getElementById('player').classList.remove('show');document.getElementById('frame').src='about:blank'}
+function setUrlFor(i){
+  let a=load(),x=a[i]; if(!x)return;
+  let u=prompt('URL for '+x.name+':',x.url||'');
+  if(u===null)return;
+  u=u.trim();
+  if(!ok(u)){alert('Enter an http:// or https:// URL');return}
+  x.url=u;a[i]=x;save(a);openEmbed(x.name,u)
+}
+function render(){
+  const c=document.getElementById('channels');c.innerHTML='';
+  built.forEach(x=>{
+    let b=document.createElement('button');b.className='ch';b.textContent=x[0];
+    b.onclick=()=>location.href=x[1];c.appendChild(b)
+  });
+  load().forEach((x,i)=>{
+    let b=document.createElement('button');
+    b.className='ch custom'+(ok(x.url)?'':' missing');
+    b.textContent=x.name+(ok(x.url)?'':' • sem URL');
+    b.onclick=()=>ok(x.url)?openEmbed(x.name,x.url):setUrlFor(i);
+    b.oncontextmenu=e=>{
+      e.preventDefault();
+      if(confirm('Remove '+x.name+'?')){let a=load();a.splice(i,1);save(a)}
+      return false
+    };
+    c.appendChild(b)
+  })
+}
+function toggle(id){document.getElementById(id).classList.toggle('show')}
+function addOne(){
+  let n=document.getElementById('n').value.trim(),u=document.getElementById('u').value.trim();
+  if(!n||!ok(u)){alert('Enter a name and http:// or https:// URL');return}
+  let a=load();
+  if(!a.some(x=>ok(x.url)&&x.url.toLowerCase()==u.toLowerCase()))a.push({name:n,url:u});
+  save(a);document.getElementById('n').value='';document.getElementById('u').value='';toggle('add');openEmbed(n,u)
+}
+function parseJson(text){
+  let v=JSON.parse(text);
+  if(!Array.isArray(v)){
+    if(Array.isArray(v.channels))v=v.channels;
+    else throw new Error('JSON must be an array or contain channels[]')
+  }
+  let out=[];
+  for(let x of v){
+    let n=normItem(x);
+    if(n&&n.name)out.push(n)
+  }
+  return out
+}
+function parseText(text){
+  let raw=text.replace(/\r/g,'').split('\n'),out=[],pending=null;
+  for(let s of raw){
+    let line=s.trim();
+    if(!line||line.toUpperCase()=='#EXTM3U')continue;
+    if(line.startsWith('#EXTINF')){
+      let k=line.lastIndexOf(',');pending=k>=0?line.slice(k+1).trim():'Channel';continue
+    }
+    if(line.startsWith('#'))continue;
+    if(ok(line)){
+      let name=pending||(()=>{try{return new URL(line).hostname}catch(e){return 'Channel'}})();
+      out.push({name:name,url:line});pending=null;continue
+    }
+    let p=line.indexOf('|');
+    if(p>0){
+      let n=line.slice(0,p).trim(),u=line.slice(p+1).trim();
+      if(n&&ok(u))out.push({name:n,url:u})
+    }
+  }
+  return out
+}
+function sameChannel(a,b){
+  if(ok(a.url)&&ok(b.url)&&a.url.toLowerCase()==b.url.toLowerCase())return true;
+  if(a.slug&&b.slug&&a.slug.toLowerCase()==b.slug.toLowerCase())return true;
+  return a.name.toLowerCase()==b.name.toLowerCase()
+}
+function importList(){
+  let text=document.getElementById('list').value.trim(),found=[];
+  if(!text){alert('Paste a list first');return}
+  try{found=(text[0]=='['||text[0]=='{')?parseJson(text):parseText(text)}
+  catch(e){alert('Invalid list: '+e.message);return}
+  let a=load(),added=0,missing=0;
+  for(let x of found){
+    if(!a.some(y=>sameChannel(y,x))){
+      a.push(x);added++;if(!ok(x.url))missing++
+    }
+  }
+  save(a);
+  alert(added+' channel(s) added'+(missing?' ('+missing+' without URL)':''));
+  document.getElementById('list').value='';toggle('import')
+}
+function exportList(){
+  let data=JSON.stringify({channels:load()},null,2);
+  navigator.clipboard&&navigator.clipboard.writeText(data).then(()=>alert('JSON copied to clipboard')).catch(()=>prompt('Copy JSON:',data));
+  if(!navigator.clipboard)prompt('Copy JSON:',data)
+}
+function clearCustom(){if(confirm('Clear all custom channels?'))save([])}
+window.addEventListener('popstate',()=>{if(document.getElementById('player').classList.contains('show'))closePlayer()});
+render();
+</script>
+</body>
+</html>
