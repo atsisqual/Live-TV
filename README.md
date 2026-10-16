@@ -1,12 +1,44 @@
 # Live-TV
 
-Small utilities for auditing **authorized** live-TV/web-player integrations.
+Utilities for auditing **authorized** web-player integrations, plus a small Android viewer for official/public live-TV pages.
 
-## Embed auditor
+## Android app
 
-`live-tv-embed-audit` inspects a **local HTML file** and reports player container URLs found in `iframe`, `embed`, and `object` elements.
+The Android app lives in `android/` and presents a channel bar above an embedded `WebView` player. It currently includes official RTP Play live pages for:
 
-It deliberately does not crawl websites, fetch discovered player hosts, extract direct media/playlist URLs, or bypass authentication, browser verification, DRM, tokens, referer/origin checks, or other access controls.
+- RTP 1
+- RTP 2
+- RTP Notícias
+- RTP Memória
+- RTP Açores
+- RTP Madeira
+- RTP África
+- RTP Mundo
+
+The app does not extract underlying stream URLs. Navigation stays inside RTP-owned hosts; external links are handed to the device browser.
+
+### Build locally
+
+Requirements: Android SDK 35, Java 17 and Gradle 8.7.
+
+```bash
+cd android
+gradle :app:assembleDebug
+```
+
+The APK is produced at:
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+GitHub Actions also builds the debug APK automatically and uploads it as the `Live-TV-debug-apk` workflow artifact.
+
+## Offline embed auditor
+
+`live-tv-embed-audit` inspects a saved HTML file and reports embedded player containers such as `iframe`, `embed`, and `object` references.
+
+It deliberately works offline: it does not crawl websites, fetch discovered player hosts, extract direct media/playlist URLs, or bypass authentication, browser verification, DRM, referer/origin checks, tokens, or other access controls.
 
 ### Install
 
@@ -14,18 +46,14 @@ It deliberately does not crawl websites, fetch discovered player hosts, extract 
 python -m pip install -e .
 ```
 
-### Save authorized HTML
+### Example
 
-Export or save the HTML from a page you own or are authorized to inspect, for example as `page.html`.
-
-### Inspect embeds
+Save an authorized page as `page.html`, then run:
 
 ```bash
 live-tv-embed-audit page.html \
   --base-url https://tv.example.test/category
 ```
-
-The optional `--base-url` resolves relative paths and marks embeds on another host as external.
 
 JSON output:
 
@@ -33,11 +61,4 @@ JSON output:
 live-tv-embed-audit page.html \
   --base-url https://tv.example.test/category \
   --json
-```
-
-Example output:
-
-```text
-[iframe/external] https://player.example.test/embed/1
-[embed/same-host/unknown] https://tv.example.test/legacy/player.html
 ```
