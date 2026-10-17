@@ -1,9 +1,9 @@
 {
-  "versionCode": 22,
-  "versionName": "1.5.5",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.5.apk",
+  "versionCode": 23,
+  "versionName": "1.5.6",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.6.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "EPG automático: guarda uma fonte XMLTV HTTPS e atualiza a grelha automaticamente, incluindo fontes gzip.",
-  "publishedAt": "2026-10-17T12:31:01Z"
+  "notes": "Modo simples: ecrã principal respeita as barras do Android, canais abrem em landscape, botão Voltar grande no stream, AO VIVO removido da grelha e áudio ativado por defeito quando o player permite.",
+  "publishedAt": "2026-10-17T12:33:11Z"
 }
