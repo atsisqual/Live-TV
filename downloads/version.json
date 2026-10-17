@@ -1,9 +1,9 @@
 {
-  "versionCode": 33,
-  "versionName": "1.6.6",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.6.apk",
+  "versionCode": 34,
+  "versionName": "1.6.7",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.7.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "Corrige a ativação do Modo player direto no Android, mantendo a seleção de player por canal e o áudio automático no wideiptv.top. Auto-update ativo.",
-  "publishedAt": "2026-10-17T15:04:26Z"
+  "notes": "TV do Zé: novo nome e ícone, opção para desligar a procura automática de atualizações e remoção do overlay LIVE do wideiptv.top quando é um elemento do player. Mantém seleção de player e áudio automático.",
+  "publishedAt": "2026-10-17T15:27:12Z"
 }
