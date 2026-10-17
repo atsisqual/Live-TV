@@ -1,9 +1,9 @@
 {
-  "versionCode": 20,
-  "versionName": "1.5.3",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.3.apk",
+  "versionCode": 21,
+  "versionName": "1.5.4",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.4.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "Importação M3U melhorada: tvg-logo, tvg-id e group-title passam a ser aproveitados automaticamente.",
-  "publishedAt": "2026-10-17T12:09:34Z"
+  "notes": "EPG Now/Next: importa XMLTV e mostra o programa atual e o seguinte diretamente nos cartões dos canais.",
+  "publishedAt": "2026-10-17T12:10:45Z"
 }
