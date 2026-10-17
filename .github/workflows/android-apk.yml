@@ -44,18 +44,6 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Embed current AdGuard DNS filter
-        shell: bash
-        run: |
-          set -euxo pipefail
-          ASSET="$GITHUB_WORKSPACE/android/app/src/main/assets/adguard-dns-filter-bootstrap.txt"
-          curl -fL --retry 3 --retry-delay 2 \
-            'https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt' \
-            -o "$ASSET"
-          test -s "$ASSET"
-          test "$(grep -c '^||' "$ASSET")" -gt 100
-          ls -lh "$ASSET"
-
       - name: Build debug APK
         working-directory: android
         run: gradle :app:assembleDebug --stacktrace
@@ -67,12 +55,11 @@ jobs:
           APK="$GITHUB_WORKSPACE/android/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "package:"
-          unzip -l "$APK" | grep -q 'assets/adguard-dns-filter-bootstrap.txt'
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Live-TV-debug-apk
+          name: Live-TV-v1.3.6-targeted-adblock
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
