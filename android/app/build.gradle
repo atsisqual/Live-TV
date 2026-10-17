@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.11 keeps channel records lightweight; bundled logos stay outside localStorage.
-        versionCode 38
-        versionName '1.6.11'
+        // v1.6.12 reduces player-page DOM overhead and preserves APITOTAL Player N in sidebar navigation.
+        versionCode 39
+        versionName '1.6.12'
     }
 
     buildFeatures {
