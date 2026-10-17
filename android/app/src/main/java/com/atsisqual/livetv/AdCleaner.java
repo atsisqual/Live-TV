@@ -13,9 +13,9 @@ final class AdCleaner {
     private AdCleaner() {}
 
     /*
-     * Do NOT inject into rdembed/comeumamao: Cloudflare Challenge Pages require an
-     * unmodified browser environment. Native WebView filtering still blocks confirmed
-     * ad requests and secondary windows.
+     * Do NOT inject the full cleaner into rdembed/comeumamao: Cloudflare Challenge Pages
+     * require an unmodified browser environment. Native WebView filtering still blocks
+     * confirmed ad requests and secondary windows.
      */
     private static final Set<String> PLAYER_ORIGINS = new HashSet<>(Arrays.asList(
             "https://apitotal.net",
@@ -99,7 +99,6 @@ final class AdCleaner {
             } catch (_) { return false; }
           };
 
-          /* Remove transparent click-catchers without touching the actual media tree. */
           const looksLikeClickCurtain = el => {
             if (!IS_DLIVE || !el || el.nodeType !== 1 || !window.getComputedStyle) return false;
             if (el === document.documentElement || el === document.body || isMediaContainer(el)) return false;
@@ -326,8 +325,151 @@ final class AdCleaner {
         })();
         """;
 
+    /*
+     * Runs on every document but returns immediately outside the local home page. This lets
+     * the existing user-imported Portugal list be routed to DLive without changing local
+     * storage, the JSON schema, favorites, order or backup data.
+     */
+    private static final String HOME_ROUTER_SCRIPT = """
+        (() => {
+          'use strict';
+          if (location.protocol !== 'file:') return;
+
+          const BY_SLUG = {
+            'canal-11':540,
+            'dazn':455,
+            'dazn2':456,
+            'dazn3':457,
+            'porto-canal':718,
+            'rtp1':719,
+            'rtp2':720,
+            'rtp3':721,
+            'sport-tv':49,
+            'sport-tv-2':74,
+            'sport-tv-3':454,
+            'sport-tv-4':289,
+            'sport-tv-5':290,
+            'sport-tv-6':291,
+            'sporting-tv':716,
+            'tvi':723,
+            'tvi-reality':724
+          };
+
+          const BY_NAME = {
+            'axn movies':717,
+            'axn movies portugal':717,
+            'canal 11':540,
+            'canal 11 portugal':540,
+            'cmtv':790,
+            'cmtv portugal':790,
+            'dazn portugal fifa mundial de clubes':918,
+            'dazn fifa mundial de clubes':918,
+            'eleven sports 1':455,
+            'eleven sports 1 portugal':455,
+            'eleven sports 2':456,
+            'eleven sports 2 portugal':456,
+            'eleven sports 3':457,
+            'eleven sports 3 portugal':457,
+            'eleven sports 4':458,
+            'eleven sports 4 portugal':458,
+            'eleven sports 5':459,
+            'eleven sports 5 portugal':459,
+            'porto canal':718,
+            'porto canal portugal':718,
+            'rtp 1':719,
+            'rtp1':719,
+            'rtp 1 portugal':719,
+            'rtp 2':720,
+            'rtp2':720,
+            'rtp 2 portugal':720,
+            'rtp 3':721,
+            'rtp3':721,
+            'rtp 3 portugal':721,
+            'sport tv':49,
+            'sport tv 1':49,
+            'sport tv1':49,
+            'sport tv1 portugal':49,
+            'sport tv 2':74,
+            'sport tv2':74,
+            'sport tv2 portugal':74,
+            'sport tv 3':454,
+            'sport tv3':454,
+            'sport tv3 portugal':454,
+            'sport tv 4':289,
+            'sport tv4':289,
+            'sport tv4 portugal':289,
+            'sport tv 5':290,
+            'sport tv5':290,
+            'sport tv5 portugal':290,
+            'sport tv 6':291,
+            'sport tv6':291,
+            'sport tv6 portugal':291,
+            'sic':722,
+            'sic portugal':722,
+            'sporting tv':716,
+            'sporting tv portugal':716,
+            'tvi':723,
+            'tvi portugal':723,
+            'tvi reality':724,
+            'tvi reality portugal':724
+          };
+
+          const normalName = value => {
+            try {
+              return String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+                .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+            } catch (_) {
+              return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+            }
+          };
+
+          const slugFrom = item => {
+            if (item && item.slug) return String(item.slug).toLowerCase().trim();
+            for (const raw of [item && item.source_url, item && item.url]) {
+              try {
+                const m = new URL(String(raw || '')).pathname.match(/\\/tv001\\/([^/?#]+)/i);
+                if (m) return decodeURIComponent(m[1]).toLowerCase();
+              } catch (_) {}
+            }
+            return '';
+          };
+
+          const dliveUrl = item => {
+            const slug = slugFrom(item);
+            const id = BY_SLUG[slug] || BY_NAME[normalName(item && item.name)];
+            return id ? 'https://dlive.sx/stream/stream-' + id + '.php' : '';
+          };
+
+          let attempts = 0;
+          const install = () => {
+            attempts++;
+            if (typeof window.openChannel !== 'function') {
+              if (attempts < 250) setTimeout(install, 20);
+              return;
+            }
+            if (window.openChannel.__livetvDliveRouter) return;
+            const original = window.openChannel;
+            const routed = function(item) {
+              const url = dliveUrl(item);
+              if (!url) return original(item);
+              const clone = Object.assign({}, item || {}, {url:url, player:0});
+              return original(clone);
+            };
+            routed.__livetvDliveRouter = true;
+            window.openChannel = routed;
+          };
+
+          install();
+        })();
+        """;
+
     static void install(WebView webView) {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
         WebViewCompat.addDocumentStartJavaScript(webView, SCRIPT, PLAYER_ORIGINS);
+        WebViewCompat.addDocumentStartJavaScript(
+                webView,
+                HOME_ROUTER_SCRIPT,
+                new HashSet<>(Arrays.asList("*"))
+        );
     }
 }
