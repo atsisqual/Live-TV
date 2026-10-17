@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.13 adds the first local TV do Zé player gateway proof of concept for Canal 11.
-        versionCode 40
-        versionName '1.6.13'
+        // v1.6.14 replaces the Canal 11 APITOTAL gateway flow with a direct-provider registry.
+        versionCode 41
+        versionName '1.6.14'
     }
 
     buildFeatures {
