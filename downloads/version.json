@@ -1,9 +1,9 @@
 {
-  "versionCode": 26,
-  "versionName": "1.5.9",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.9.apk",
+  "versionCode": 27,
+  "versionName": "1.6.0",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.0.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "Suporte a player por canal no JSON (player: N): a app seleciona a alternativa API Total pedida antes de ocultar o seletor. O update checker continua ativo.",
-  "publishedAt": "2026-10-17T13:44:33Z"
+  "notes": "Novo teste DLive: lista Portugal por channel ID, bloqueio de popunders, links _blank e cortinas transparentes fullscreen. Auto-update mantém-se ativo.",
+  "publishedAt": "2026-10-17T13:46:15Z"
 }
