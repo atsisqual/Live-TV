@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 env:
-  APK_VERSION: '1.6.0'
-  APK_VERSION_CODE: '27'
+  APK_VERSION: '1.6.1'
+  APK_VERSION_CODE: '28'
   SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
   SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
   SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS || secrets.ANDROID_KEY_ALIAS }}
@@ -98,8 +98,8 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Live-TV-v1.6.0
-          path: Live-TV-v1.6.0.apk
+          name: Live-TV-v1.6.1
+          path: Live-TV-v1.6.1.apk
           if-no-files-found: error
 
       - name: Publish APK and update manifest to GitHub Pages
@@ -122,7 +122,7 @@ jobs:
             "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v${APK_VERSION}.apk",
             "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
             "signedRelease": true,
-            "notes": "Novo teste DLive: lista Portugal por channel ID, bloqueio de popunders, links _blank e cortinas transparentes fullscreen. Auto-update mantém-se ativo.",
+            "notes": "DLive passa a ser usado automaticamente nos canais Portugal mapeados, sem reimportar a lista. Bloqueio reforçado de popunders, links _blank e cortinas transparentes fullscreen. Auto-update ativo.",
             "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF
