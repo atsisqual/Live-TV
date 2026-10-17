@@ -13,10 +13,14 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import org.json.JSONObject;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -26,11 +30,16 @@ import java.util.concurrent.Executors;
  * v1.6.18 keeps the event-driven player model from v1.6.17, but avoids rebuilding
  * the complete native channel list when only the selected row changed. It also
  * warms the embedded-logo bitmap cache off the UI thread before the sidebar needs it.
+ *
+ * v1.6.19 makes portugal-sports-channels.json the single logo source for both the
+ * native sidebar and the local home grid. The catalogue is parsed once by the native
+ * layer, cached in memory, then injected into the home page once per document.
  */
 public class SyncedEpgMainActivity extends EpgMainActivity {
 
     private static final String PREFS = "live-tv-settings";
     private static final String PREF_LAST_CHANNEL = "last-channel-url";
+    private static final String HOME_URL = "file:///android_asset/index.html";
     private static final int MAX_LOGO_BYTES = 768 * 1024;
 
     private final ExecutorService logoPreloader = Executors.newSingleThreadExecutor();
@@ -41,9 +50,12 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
     private Field channelScrollField;
     private Field channelItemUrlField;
     private Field bundledLogoDarkField;
+    private Field bundledLogoLightField;
     private Field logoCacheField;
     private Method matchesActiveChannelMethod;
     private boolean reflectionReady;
+    private boolean homeLogosInjected;
+    private String homeLogoCatalogJson;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -53,6 +65,7 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
 
     @Override
     protected void onLiveTvPageStarted(WebView view, String url) {
+        if (isHomeUrl(url)) homeLogosInjected = false;
         preconfirmSelection(url);
         super.onLiveTvPageStarted(view, url);
     }
@@ -61,12 +74,76 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
     protected void onLiveTvPageCommitVisible(WebView view, String url) {
         preconfirmSelection(url);
         super.onLiveTvPageCommitVisible(view, url);
+        injectBundledLogosIntoHome(view, url);
     }
 
     @Override
     protected void onLiveTvPageFinished(WebView view, String url) {
         preconfirmSelection(url);
         super.onLiveTvPageFinished(view, url);
+        injectBundledLogosIntoHome(view, url);
+    }
+
+    private boolean isHomeUrl(String url) {
+        return url != null && url.startsWith(HOME_URL);
+    }
+
+    private void injectBundledLogosIntoHome(WebView view, String url) {
+        if (view == null || !isHomeUrl(url) || homeLogosInjected) return;
+
+        String catalog = getHomeLogoCatalogJson();
+        if (catalog == null || catalog.equals("{}")) return;
+        homeLogosInjected = true;
+
+        String script =
+                "(function(){try{"
+                        + "var catalog=" + catalog + ";"
+                        + "window.__liveTvBundledLogoCatalog=catalog;"
+                        + "function apply(){try{"
+                        + "if(typeof bundledLogoMap==='undefined')return false;"
+                        + "bundledLogoMap=new Map(Object.keys(catalog).map(function(k){"
+                        + "return [String(k).toLowerCase(),catalog[k]];" 
+                        + "}));"
+                        + "if(typeof render==='function')render();"
+                        + "return true;"
+                        + "}catch(e){return false;}}"
+                        + "if(apply())return true;"
+                        + "var attempts=0;var timer=setInterval(function(){"
+                        + "attempts++;if(apply()||attempts>=20)clearInterval(timer);"
+                        + "},25);return true;"
+                        + "}catch(e){return false;}})()";
+        view.evaluateJavascript(script, null);
+    }
+
+    private String getHomeLogoCatalogJson() {
+        if (homeLogoCatalogJson != null) return homeLogoCatalogJson;
+        try {
+            prepareReflection();
+            @SuppressWarnings("unchecked")
+            Map<String, String> dark = (Map<String, String>) bundledLogoDarkField.get(this);
+            @SuppressWarnings("unchecked")
+            Map<String, String> light = (Map<String, String>) bundledLogoLightField.get(this);
+
+            JSONObject catalog = new JSONObject();
+            Set<String> slugs = new HashSet<>();
+            if (dark != null) slugs.addAll(dark.keySet());
+            if (light != null) slugs.addAll(light.keySet());
+
+            for (String slug : slugs) {
+                if (slug == null || slug.trim().isEmpty()) continue;
+                JSONObject logos = new JSONObject();
+                String darkValue = dark == null ? "" : safe(dark.get(slug));
+                String lightValue = light == null ? "" : safe(light.get(slug));
+                if (!darkValue.isEmpty()) logos.put("logo_dark", darkValue);
+                if (!lightValue.isEmpty()) logos.put("logo_light", lightValue);
+                if (logos.length() > 0) catalog.put(slug.toLowerCase(), logos);
+            }
+
+            homeLogoCatalogJson = catalog.toString();
+        } catch (Exception ignored) {
+            homeLogoCatalogJson = "{}";
+        }
+        return homeLogoCatalogJson;
     }
 
     private void prepareReflection() throws Exception {
@@ -78,6 +155,7 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
         channelListField = cls.getDeclaredField("channelList");
         channelScrollField = cls.getDeclaredField("channelScroll");
         bundledLogoDarkField = cls.getDeclaredField("bundledLogoDark");
+        bundledLogoLightField = cls.getDeclaredField("bundledLogoLight");
         logoCacheField = cls.getDeclaredField("logoCache");
         matchesActiveChannelMethod = cls.getDeclaredMethod(
                 "matchesActiveChannel", String.class, String.class);
@@ -87,6 +165,7 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
         channelListField.setAccessible(true);
         channelScrollField.setAccessible(true);
         bundledLogoDarkField.setAccessible(true);
+        bundledLogoLightField.setAccessible(true);
         logoCacheField.setAccessible(true);
         matchesActiveChannelMethod.setAccessible(true);
         reflectionReady = true;
@@ -205,12 +284,18 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
             try {
                 prepareReflection();
                 @SuppressWarnings("unchecked")
-                Map<String, String> logos = (Map<String, String>) bundledLogoDarkField.get(this);
+                Map<String, String> dark = (Map<String, String>) bundledLogoDarkField.get(this);
+                @SuppressWarnings("unchecked")
+                Map<String, String> light = (Map<String, String>) bundledLogoLightField.get(this);
                 @SuppressWarnings("unchecked")
                 Map<String, Bitmap> cache = (Map<String, Bitmap>) logoCacheField.get(this);
-                if (logos == null || cache == null || logos.isEmpty()) return;
+                if (cache == null) return;
 
-                for (String value : logos.values()) {
+                Set<String> logoValues = new HashSet<>();
+                if (dark != null) logoValues.addAll(dark.values());
+                if (light != null) logoValues.addAll(light.values());
+
+                for (String value : logoValues) {
                     String logo = value == null ? "" : value.trim();
                     if (!logo.regionMatches(true, 0, "data:image/", 0, 11)
                             || cache.containsKey(logo)) continue;
