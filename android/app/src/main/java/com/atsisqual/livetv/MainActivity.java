@@ -1,39 +1,57 @@
 package com.atsisqual.livetv;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
 import java.net.IDN;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
 
-    /*
-     * 1.4.1 keeps the stable top-level player model and safe-area/fullscreen shell.
-     * The local home resolves known catalogue entries directly to Player 1. If an
-     * API Total page is still required, the WebView automatically activates Player 1.
-     */
+    private static final String HOME_URL = "file:///android_asset/index.html";
+    private static final String UPDATE_MANIFEST =
+            "https://atsisqual.github.io/Live-TV/downloads/version.json";
+
     private static final Set<String> BLOCKED_HOSTS = unmodifiableSet(
             "histats.com",
             "crwdcntrl.net",
@@ -76,26 +94,112 @@ public class MainActivity extends Activity {
             "challenges.cloudflare.com"
     );
 
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService background = Executors.newSingleThreadExecutor();
+
     private FrameLayout root;
     private WebView web;
+    private FrameLayout statusOverlay;
+    private ProgressBar statusSpinner;
+    private TextView statusTitle;
+    private TextView statusDetail;
+    private Button retryButton;
+    private Button homeButton;
+
     private View fullscreen;
     private WebChromeClient.CustomViewCallback fullscreenCallback;
+    private boolean mainFrameFailed;
+    private boolean updateDialogShown;
+    private UpdateInfo pendingUpdate;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
 
         root = new FrameLayout(this);
-        root.setBackgroundColor(Color.BLACK);
+        root.setBackgroundColor(Color.rgb(9, 11, 15));
 
         web = new WebView(this);
-        web.setBackgroundColor(Color.BLACK);
+        web.setBackgroundColor(Color.rgb(9, 11, 15));
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
+
+        buildStatusOverlay();
         setContentView(root);
 
         configureSystemBars();
         configureWebView();
-        web.loadUrl("file:///android_asset/index.html");
+        web.loadUrl(HOME_URL);
+        checkForUpdates();
+    }
+
+    private void buildStatusOverlay() {
+        statusOverlay = new FrameLayout(this);
+        statusOverlay.setBackgroundColor(Color.rgb(9, 11, 15));
+        statusOverlay.setVisibility(View.GONE);
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setGravity(Gravity.CENTER_HORIZONTAL);
+        panel.setPadding(dp(28), dp(30), dp(28), dp(30));
+
+        statusSpinner = new ProgressBar(this);
+        LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        spinnerParams.bottomMargin = dp(18);
+        panel.addView(statusSpinner, spinnerParams);
+
+        statusTitle = new TextView(this);
+        statusTitle.setTextColor(Color.WHITE);
+        statusTitle.setTextSize(20);
+        statusTitle.setGravity(Gravity.CENTER);
+        statusTitle.setTypeface(statusTitle.getTypeface(), android.graphics.Typeface.BOLD);
+        panel.addView(statusTitle, new LinearLayout.LayoutParams(-1, -2));
+
+        statusDetail = new TextView(this);
+        statusDetail.setTextColor(Color.rgb(141, 150, 165));
+        statusDetail.setTextSize(14);
+        statusDetail.setGravity(Gravity.CENTER);
+        statusDetail.setPadding(0, dp(9), 0, dp(20));
+        panel.addView(statusDetail, new LinearLayout.LayoutParams(-1, -2));
+
+        retryButton = makeStatusButton("Tentar novamente", true);
+        retryButton.setOnClickListener(v -> {
+            mainFrameFailed = false;
+            showLoading(web.getUrl());
+            web.reload();
+        });
+        panel.addView(retryButton, buttonLayoutParams());
+
+        homeButton = makeStatusButton("Voltar aos canais", false);
+        homeButton.setOnClickListener(v -> {
+            mainFrameFailed = false;
+            web.loadUrl(HOME_URL);
+        });
+        LinearLayout.LayoutParams homeParams = buttonLayoutParams();
+        homeParams.topMargin = dp(9);
+        panel.addView(homeButton, homeParams);
+
+        FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        statusOverlay.addView(panel, panelParams);
+        root.addView(statusOverlay, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private Button makeStatusButton(String label, boolean primary) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextSize(14);
+        button.setAllCaps(false);
+        button.setTextColor(primary ? Color.BLACK : Color.WHITE);
+        button.setBackgroundColor(primary ? Color.rgb(240, 242, 245) : Color.rgb(42, 49, 60));
+        button.setMinHeight(dp(48));
+        return button;
+    }
+
+    private LinearLayout.LayoutParams buttonLayoutParams() {
+        return new LinearLayout.LayoutParams(dp(220), dp(50));
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private void configureSystemBars() {
@@ -107,18 +211,20 @@ public class MainActivity extends Activity {
                 getWindow().setNavigationBarContrastEnforced(false);
             }
 
-            web.setOnApplyWindowInsetsListener((view, windowInsets) -> {
+            root.setOnApplyWindowInsetsListener((view, windowInsets) -> {
                 if (fullscreen != null) {
-                    view.setPadding(0, 0, 0, 0);
+                    web.setPadding(0, 0, 0, 0);
+                    statusOverlay.setPadding(0, 0, 0, 0);
                     return windowInsets;
                 }
 
                 Insets safe = windowInsets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                web.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                statusOverlay.setPadding(safe.left, safe.top, safe.right, safe.bottom);
                 return windowInsets;
             });
-            web.requestApplyInsets();
+            root.requestApplyInsets();
         } else {
             getWindow().setStatusBarColor(Color.BLACK);
             getWindow().setNavigationBarColor(Color.BLACK);
@@ -152,8 +258,7 @@ public class MainActivity extends Activity {
                 if (!request.isForMainFrame() || !isHttp(uri)) return false;
 
                 String current = view.getUrl();
-                if (current != null && (current.startsWith("file:///android_asset/")
-                        || current.startsWith("about:"))) {
+                if (isLocalHome(current) || (current != null && current.startsWith("about:"))) {
                     return false;
                 }
 
@@ -170,18 +275,53 @@ public class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
-                boolean localHome = url != null && url.startsWith("file:///android_asset/");
-                if (localHome) {
+                mainFrameFailed = false;
+
+                if (isLocalHome(url)) {
                     getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    hideStatus();
                 } else {
                     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    showLoading(url);
                 }
+            }
+
+            @Override
+            public void onPageCommitVisible(WebView view, String url) {
+                super.onPageCommitVisible(view, url);
+                if (!mainFrameFailed) hideStatus();
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                autoSelectPlayerOne(view, url);
+                if (!mainFrameFailed) hideStatus();
+                if (isLocalHome(url)) maybeShowPendingUpdate();
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                if (request.isForMainFrame()) {
+                    mainFrameFailed = true;
+                    CharSequence description = error == null ? null : error.getDescription();
+                    showError("Não foi possível abrir o canal",
+                            description == null ? "Verifica a ligação e tenta novamente." : description.toString());
+                }
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            WebResourceResponse errorResponse) {
+                super.onReceivedHttpError(view, request, errorResponse);
+                if (!request.isForMainFrame() || errorResponse == null) return;
+
+                int code = errorResponse.getStatusCode();
+                // 403/429 can be part of Cloudflare challenge/rate-limit flows that later recover.
+                if (code >= 500 || code == 404 || code == 410) {
+                    mainFrameFailed = true;
+                    showError("O canal não respondeu", "Erro HTTP " + code + ". Podes tentar novamente.");
+                }
             }
 
             @Override
@@ -207,6 +347,7 @@ public class MainActivity extends Activity {
 
                 fullscreen = view;
                 fullscreenCallback = callback;
+                statusOverlay.setVisibility(View.GONE);
                 web.setVisibility(View.GONE);
                 root.addView(view, new FrameLayout.LayoutParams(-1, -1));
                 hideSystemBars();
@@ -219,37 +360,118 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void autoSelectPlayerOne(WebView view, String url) {
-        if (url == null) return;
-        Uri uri;
+    private void showLoading(String url) {
+        if (fullscreen != null) return;
+        String host = "";
         try {
-            uri = Uri.parse(url);
+            Uri uri = Uri.parse(url == null ? "" : url);
+            String h = normalizedHost(uri);
+            if (h != null) host = h;
+        } catch (Exception ignored) {}
+
+        statusSpinner.setVisibility(View.VISIBLE);
+        statusTitle.setText("A abrir canal…");
+        statusDetail.setText(host.isEmpty() ? "A preparar o player" : host);
+        retryButton.setVisibility(View.GONE);
+        homeButton.setVisibility(View.GONE);
+        statusOverlay.setVisibility(View.VISIBLE);
+        statusOverlay.bringToFront();
+    }
+
+    private void showError(String title, String detail) {
+        if (fullscreen != null) return;
+        statusSpinner.setVisibility(View.GONE);
+        statusTitle.setText(title);
+        statusDetail.setText(detail);
+        retryButton.setVisibility(View.VISIBLE);
+        homeButton.setVisibility(View.VISIBLE);
+        statusOverlay.setVisibility(View.VISIBLE);
+        statusOverlay.bringToFront();
+    }
+
+    private void hideStatus() {
+        statusOverlay.setVisibility(View.GONE);
+    }
+
+    private void checkForUpdates() {
+        background.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(UPDATE_MANIFEST + "?v=" + System.currentTimeMillis());
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+                connection.setUseCaches(false);
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("User-Agent", "Live-TV/" + BuildConfig.VERSION_NAME);
+
+                if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) return;
+
+                StringBuilder json = new StringBuilder();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                        connection.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) json.append(line);
+                }
+
+                JSONObject obj = new JSONObject(json.toString());
+                int versionCode = obj.optInt("versionCode", 0);
+                String versionName = obj.optString("versionName", "").trim();
+                String apkUrl = obj.optString("apkUrl", "").trim();
+                String notes = obj.optString("notes", "").trim();
+
+                if (versionCode <= BuildConfig.VERSION_CODE || !isTrustedUpdateUrl(apkUrl)) return;
+
+                pendingUpdate = new UpdateInfo(versionCode, versionName, apkUrl, notes);
+                mainHandler.post(this::maybeShowPendingUpdate);
+            } catch (Exception ignored) {
+                // Update checks must never interfere with watching TV.
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private boolean isTrustedUpdateUrl(String value) {
+        try {
+            Uri uri = Uri.parse(value);
+            if (!"https".equalsIgnoreCase(uri.getScheme())) return false;
+            String host = normalizedHost(uri);
+            return domainMatches(host, "raw.githubusercontent.com")
+                    || domainMatches(host, "atsisqual.github.io");
         } catch (Exception ignored) {
-            return;
+            return false;
         }
+    }
 
-        String host = normalizedHost(uri);
-        if (host == null || !domainMatches(host, "apitotal.net")) return;
+    private void maybeShowPendingUpdate() {
+        if (pendingUpdate == null || updateDialogShown || isFinishing()) return;
+        if (!isLocalHome(web.getUrl())) return;
 
-        String script =
-                "(function(){" +
-                "if(window.__liveTvPlayer1Auto)return;" +
-                "window.__liveTvPlayer1Auto=true;" +
-                "function pick(){" +
-                "var all=[].slice.call(document.querySelectorAll('a,button,[role=button]'));" +
-                "var e=all.find(function(x){" +
-                "var t=(x.textContent||'').replace(/\\s+/g,' ').trim();" +
-                "var id=((x.id||'')+' '+(x.className||'')).toString();" +
-                "return /^PLAYER\\s*1$/i.test(t)||/^PLAYER1$/i.test(t)||/player[-_\\s]?1/i.test(id);" +
-                "});" +
-                "if(e){e.click();return true;}return false;" +
-                "}" +
-                "if(pick())return;" +
-                "var o=new MutationObserver(function(){if(pick())o.disconnect();});" +
-                "o.observe(document.documentElement,{childList:true,subtree:true});" +
-                "setTimeout(function(){o.disconnect();pick();},8000);" +
-                "})();";
-        view.evaluateJavascript(script, null);
+        updateDialogShown = true;
+        UpdateInfo update = pendingUpdate;
+        String version = update.versionName.isEmpty() ? String.valueOf(update.versionCode) : update.versionName;
+        String message = "Está disponível a versão " + version + ".";
+        if (!update.notes.isEmpty()) message += "\n\n" + update.notes;
+
+        new AlertDialog.Builder(this)
+                .setTitle("Nova versão disponível")
+                .setMessage(message)
+                .setNegativeButton("Mais tarde", null)
+                .setPositiveButton("Atualizar", (dialog, which) -> openUpdateUrl(update.apkUrl))
+                .show();
+    }
+
+    private void openUpdateUrl(String url) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception ignored) {}
+    }
+
+    private boolean isLocalHome(String url) {
+        return url != null && url.startsWith("file:///android_asset/");
     }
 
     private void hideSystemBars() {
@@ -329,6 +551,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean domainMatches(String host, String domain) {
+        if (host == null) return false;
         return host.equals(domain) || host.endsWith("." + domain);
     }
 
@@ -354,7 +577,7 @@ public class MainActivity extends Activity {
         fullscreen = null;
         showSystemBars();
         web.setVisibility(View.VISIBLE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) web.requestApplyInsets();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) root.requestApplyInsets();
 
         if (fullscreenCallback != null) {
             fullscreenCallback.onCustomViewHidden();
@@ -375,6 +598,8 @@ public class MainActivity extends Activity {
             return;
         }
         if (web.canGoBack()) {
+            mainFrameFailed = false;
+            hideStatus();
             web.goBack();
             return;
         }
@@ -384,10 +609,25 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        background.shutdownNow();
         if (web != null) {
             web.stopLoading();
             web.destroy();
         }
         super.onDestroy();
+    }
+
+    private static final class UpdateInfo {
+        final int versionCode;
+        final String versionName;
+        final String apkUrl;
+        final String notes;
+
+        UpdateInfo(int versionCode, String versionName, String apkUrl, String notes) {
+            this.versionCode = versionCode;
+            this.versionName = versionName;
+            this.apkUrl = apkUrl;
+            this.notes = notes;
+        }
     }
 }
