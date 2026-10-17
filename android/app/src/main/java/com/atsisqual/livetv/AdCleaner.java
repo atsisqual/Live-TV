@@ -52,6 +52,7 @@ final class AdCleaner {
             host === 'dlive.sx' || host.endsWith('.dlive.sx') ||
             host === 'dlhd.st' || host.endsWith('.dlhd.st') ||
             host === 'dlstreams.st' || host.endsWith('.dlstreams.st');
+          const IS_WIDEIPTV = host === 'wideiptv.top' || host.endsWith('.wideiptv.top');
 
           const REQUESTED_PLAYER = (() => {
             try {
@@ -148,6 +149,43 @@ final class AdCleaner {
                   if (attrLooksBlocked(node) || looksLikeClickCurtain(node)) disable(node);
                 });
             }
+          };
+
+          const forceSound = root => {
+            if (!IS_WIDEIPTV) return;
+            const scope = root && root.querySelectorAll ? root : document;
+            const media = [];
+            try {
+              if (scope.matches && scope.matches('video,audio')) media.push(scope);
+              scope.querySelectorAll('video,audio').forEach(m => media.push(m));
+            } catch (_) {}
+            media.forEach(m => {
+              try {
+                m.removeAttribute('muted');
+                m.muted = false;
+                m.defaultMuted = false;
+                m.volume = 1;
+              } catch (_) {}
+            });
+            try {
+              if (typeof window.jwplayer === 'function') {
+                const player = window.jwplayer();
+                if (player && typeof player.setMute === 'function') player.setMute(false);
+                if (player && typeof player.setVolume === 'function') player.setVolume(100);
+              }
+            } catch (_) {}
+            try {
+              if (window.videojs && typeof window.videojs.getPlayers === 'function') {
+                const players = window.videojs.getPlayers() || {};
+                Object.keys(players).forEach(key => {
+                  const player = players[key];
+                  try {
+                    if (player && typeof player.muted === 'function') player.muted(false);
+                    if (player && typeof player.volume === 'function') player.volume(1);
+                  } catch (_) {}
+                });
+              }
+            } catch (_) {}
           };
 
           const selectRequestedPlayer = () => {
@@ -294,6 +332,7 @@ final class AdCleaner {
             if (!document.documentElement) { setTimeout(start, 10); return; }
             cleanElement(document.documentElement);
             cleanDlive(document);
+            forceSound(document.documentElement);
             selectRequestedPlayer();
             hidePlayerChooser(document.documentElement);
             maybePromoteRdembed(document.documentElement);
@@ -302,6 +341,7 @@ final class AdCleaner {
                 if (mutation.type === 'attributes') {
                   cleanElement(mutation.target);
                   cleanDlive(mutation.target);
+                  forceSound(mutation.target);
                   selectRequestedPlayer();
                   hidePlayerChooser(mutation.target);
                   if (mutation.attributeName === 'src') maybePromoteRdembed(mutation.target);
@@ -309,6 +349,7 @@ final class AdCleaner {
                 for (const node of mutation.addedNodes || []) {
                   cleanElement(node);
                   cleanDlive(node);
+                  forceSound(node);
                   selectRequestedPlayer();
                   hidePlayerChooser(node);
                   maybePromoteRdembed(node);
@@ -319,157 +360,22 @@ final class AdCleaner {
               attributeFilter:['href','src','onclick','target','style','class','data-href','data-url','data-link']
             });
             if (IS_DLIVE) setInterval(() => cleanDlive(document), 1200);
+            if (IS_WIDEIPTV) {
+              let soundAttempts = 0;
+              const soundTimer = setInterval(() => {
+                forceSound(document);
+                soundAttempts++;
+                if (soundAttempts >= 20) clearInterval(soundTimer);
+              }, 500);
+            }
           };
 
           start();
         })();
         """;
 
-    /*
-     * Runs on every document but returns immediately outside the local home page. This lets
-     * the existing user-imported Portugal list be routed to DLive without changing local
-     * storage, the JSON schema, favorites, order or backup data.
-     */
-    private static final String HOME_ROUTER_SCRIPT = """
-        (() => {
-          'use strict';
-          if (location.protocol !== 'file:') return;
-
-          const BY_SLUG = {
-            'canal-11':540,
-            'dazn':455,
-            'dazn2':456,
-            'dazn3':457,
-            'porto-canal':718,
-            'rtp1':719,
-            'rtp2':720,
-            'rtp3':721,
-            'sport-tv':49,
-            'sport-tv-2':74,
-            'sport-tv-3':454,
-            'sport-tv-4':289,
-            'sport-tv-5':290,
-            'sport-tv-6':291,
-            'sporting-tv':716,
-            'tvi':723,
-            'tvi-reality':724
-          };
-
-          const BY_NAME = {
-            'axn movies':717,
-            'axn movies portugal':717,
-            'canal 11':540,
-            'canal 11 portugal':540,
-            'cmtv':790,
-            'cmtv portugal':790,
-            'dazn portugal fifa mundial de clubes':918,
-            'dazn fifa mundial de clubes':918,
-            'eleven sports 1':455,
-            'eleven sports 1 portugal':455,
-            'eleven sports 2':456,
-            'eleven sports 2 portugal':456,
-            'eleven sports 3':457,
-            'eleven sports 3 portugal':457,
-            'eleven sports 4':458,
-            'eleven sports 4 portugal':458,
-            'eleven sports 5':459,
-            'eleven sports 5 portugal':459,
-            'porto canal':718,
-            'porto canal portugal':718,
-            'rtp 1':719,
-            'rtp1':719,
-            'rtp 1 portugal':719,
-            'rtp 2':720,
-            'rtp2':720,
-            'rtp 2 portugal':720,
-            'rtp 3':721,
-            'rtp3':721,
-            'rtp 3 portugal':721,
-            'sport tv':49,
-            'sport tv 1':49,
-            'sport tv1':49,
-            'sport tv1 portugal':49,
-            'sport tv 2':74,
-            'sport tv2':74,
-            'sport tv2 portugal':74,
-            'sport tv 3':454,
-            'sport tv3':454,
-            'sport tv3 portugal':454,
-            'sport tv 4':289,
-            'sport tv4':289,
-            'sport tv4 portugal':289,
-            'sport tv 5':290,
-            'sport tv5':290,
-            'sport tv5 portugal':290,
-            'sport tv 6':291,
-            'sport tv6':291,
-            'sport tv6 portugal':291,
-            'sic':722,
-            'sic portugal':722,
-            'sporting tv':716,
-            'sporting tv portugal':716,
-            'tvi':723,
-            'tvi portugal':723,
-            'tvi reality':724,
-            'tvi reality portugal':724
-          };
-
-          const normalName = value => {
-            try {
-              return String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
-                .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-            } catch (_) {
-              return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-            }
-          };
-
-          const slugFrom = item => {
-            if (item && item.slug) return String(item.slug).toLowerCase().trim();
-            for (const raw of [item && item.source_url, item && item.url]) {
-              try {
-                const m = new URL(String(raw || '')).pathname.match(/\\/tv001\\/([^/?#]+)/i);
-                if (m) return decodeURIComponent(m[1]).toLowerCase();
-              } catch (_) {}
-            }
-            return '';
-          };
-
-          const dliveUrl = item => {
-            const slug = slugFrom(item);
-            const id = BY_SLUG[slug] || BY_NAME[normalName(item && item.name)];
-            return id ? 'https://dlive.sx/stream/stream-' + id + '.php' : '';
-          };
-
-          let attempts = 0;
-          const install = () => {
-            attempts++;
-            if (typeof window.openChannel !== 'function') {
-              if (attempts < 250) setTimeout(install, 20);
-              return;
-            }
-            if (window.openChannel.__livetvDliveRouter) return;
-            const original = window.openChannel;
-            const routed = function(item) {
-              const url = dliveUrl(item);
-              if (!url) return original(item);
-              const clone = Object.assign({}, item || {}, {url:url, player:0});
-              return original(clone);
-            };
-            routed.__livetvDliveRouter = true;
-            window.openChannel = routed;
-          };
-
-          install();
-        })();
-        """;
-
     static void install(WebView webView) {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
         WebViewCompat.addDocumentStartJavaScript(webView, SCRIPT, PLAYER_ORIGINS);
-        WebViewCompat.addDocumentStartJavaScript(
-                webView,
-                HOME_ROUTER_SCRIPT,
-                new HashSet<>(Arrays.asList("*"))
-        );
     }
 }
