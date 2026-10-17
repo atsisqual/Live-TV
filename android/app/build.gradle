@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.18 makes sidebar/logo/ad-cleaner work adaptive after playback stabilizes.
-        versionCode 45
-        versionName '1.6.18'
+        // v1.6.19 reuses the cached JSON logo catalogue on both home grid and sidebar.
+        versionCode 46
+        versionName '1.6.19'
     }
 
     buildFeatures {
