@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="live_tv_bg">#090B0F</color>
+    <color name="live_tv_surface">#11151B</color>
+    <color name="live_tv_accent">#FF304F</color>
+    <color name="live_tv_accent_alt">#FF6A3D</color>
+    <color name="live_tv_white">#FFFFFFFF</color>
+</resources>
