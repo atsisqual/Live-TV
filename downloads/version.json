@@ -1,9 +1,9 @@
 {
-  "versionCode": 19,
-  "versionName": "1.5.2",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.2.apk",
+  "versionCode": 20,
+  "versionName": "1.5.3",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.3.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "Atualizador reforçado: valida pacote, versão e assinatura digital antes de abrir o instalador.",
-  "publishedAt": "2026-10-17T11:59:59Z"
+  "notes": "Importação M3U melhorada: tvg-logo, tvg-id e group-title passam a ser aproveitados automaticamente.",
+  "publishedAt": "2026-10-17T12:03:10Z"
 }
