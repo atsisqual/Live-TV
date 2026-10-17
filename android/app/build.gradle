@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.19 reuses the cached JSON logo catalogue on both home grid and sidebar.
-        versionCode 46
-        versionName '1.6.19'
+        // v1.6.20 moves channel logos out of the APK and keeps them in imported JSON.
+        versionCode 47
+        versionName '1.6.20'
     }
 
     buildFeatures {
