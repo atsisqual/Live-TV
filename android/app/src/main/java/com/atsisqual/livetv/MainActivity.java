@@ -1,7 +1,6 @@
 package com.atsisqual.livetv;
 
 import android.app.Activity;
-import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -15,17 +14,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
-import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
 import java.net.IDN;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -33,17 +23,11 @@ import java.util.Locale;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String FILTER_URL =
-            "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt";
-    private static final String FILTER_ASSET = "adguard-dns-filter-bootstrap.txt";
-    private static final String FILTER_FILE = "adguard-dns-filter.txt";
-    private static final String PREFS = "live_tv_adblock";
-    private static final String KEY_FILTER_UPDATED = "filter_updated_at";
-    private static final long FILTER_REFRESH_MS = 24L * 60L * 60L * 1000L;
 
-    /* Always active from process start, before the dynamic AdGuard list is refreshed.
-       Includes domains observed in the 2026-10-17 Reqable HAR plus known popup/tracker hosts. */
-    private static final Set<String> FORCED_BLOCKED_HOSTS = unmodifiableSet(
+    /* Targeted list only. The broad AdGuard DNS list used by 1.3.4 was deliberately
+       removed because it also blocked dependencies required by embedded players. */
+    private static final Set<String> BLOCKED_HOSTS = unmodifiableSet(
+            "aliexpress.com",
             "dlhd.st",
             "histats.com",
             "crwdcntrl.net",
@@ -95,29 +79,6 @@ public class MainActivity extends Activity {
             "azureedgeglobalfastlycloudfrontondigitaloceanstackpathcdn.buzz"
     );
 
-    /* Hosts required by the page/player path. They are protected from broad public-list rules,
-       while the forced blacklist above still wins first. */
-    private static final Set<String> CORE_PLAYER_HOSTS = unmodifiableSet(
-            "apitotal.net",
-            "wideiptv.top",
-            "sportsonliine.click",
-            "rdembed.sbs",
-            "tossequip.net",
-            "dembed.st",
-            "dlive.sx",
-            "dlstreams.st",
-            "rtp.pt",
-            "video-auth7.iol.pt",
-            "jwplayer.com",
-            "jwpcdn.com",
-            "jwpltx.com",
-            "groxtv.com",
-            "pull-live-156-1.global.ssl.fastly.net"
-    );
-
-    private volatile Set<String> adGuardBlockedHosts = Collections.emptySet();
-    private volatile Set<String> adGuardAllowedHosts = Collections.emptySet();
-
     private FrameLayout root;
     private WebView web;
     private View fullscreen;
@@ -126,11 +87,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-
-        /* Bootstrap is packaged into the APK by the build. Cached newer copy wins when present. */
-        loadBundledFilter();
-        loadCachedFilter();
-        refreshFilterIfNeeded();
 
         root = new FrameLayout(this);
         web = new WebView(this);
@@ -156,12 +112,17 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
 
+        /* Executes before page scripts in matching frames, including nested cross-origin iframes. */
+        AdCleaner.install(web);
+
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 if (isBlocked(uri)) return true;
 
+                /* Prevent a third-party iframe from taking over the app's top-level page.
+                   Sub-frame navigation is allowed unless the destination is explicitly blocked. */
                 if (request.isForMainFrame() && isHttp(uri) && !isRtp(uri)) return true;
                 return false;
             }
@@ -169,10 +130,9 @@ public class MainActivity extends Activity {
             @Override
             @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                Uri uri = Uri.parse(url);
-                if (isBlocked(uri)) return true;
-                if (isHttp(uri) && !isRtp(uri)) return true;
-                return false;
+                /* Old WebView callback does not expose isForMainFrame(). Blocking every HTTP URL
+                   here broke nested players in 1.3.4, so only explicit ad/tracker hosts are denied. */
+                return isBlocked(Uri.parse(url));
             }
 
             @Override
@@ -221,12 +181,7 @@ public class MainActivity extends Activity {
 
     private boolean isBlocked(Uri uri) {
         String host = normalizedHost(uri);
-        if (host == null) return false;
-
-        if (matchesAny(host, FORCED_BLOCKED_HOSTS)) return true;
-        if (matchesAny(host, CORE_PLAYER_HOSTS)) return false;
-        if (matchesAny(host, adGuardAllowedHosts)) return false;
-        return matchesAny(host, adGuardBlockedHosts);
+        return host != null && matchesAny(host, BLOCKED_HOSTS);
     }
 
     private String normalizedHost(Uri uri) {
@@ -265,150 +220,6 @@ public class MainActivity extends Activity {
                 Collections.emptyMap(),
                 new ByteArrayInputStream(new byte[0])
         );
-    }
-
-    private void loadBundledFilter() {
-        try (InputStream input = getAssets().open(FILTER_ASSET)) {
-            applyFilter(input);
-        } catch (Exception ignored) {
-            /* The forced HAR-derived list remains active even if an asset is absent/corrupt. */
-        }
-    }
-
-    private void loadCachedFilter() {
-        File file = new File(getFilesDir(), FILTER_FILE);
-        if (!file.isFile()) return;
-        try (InputStream input = new FileInputStream(file)) {
-            applyFilter(input);
-        } catch (Exception ignored) {
-            /* Keep the bundled filter instead of clearing it on a bad cache. */
-        }
-    }
-
-    private void refreshFilterIfNeeded() {
-        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        long updatedAt = prefs.getLong(KEY_FILTER_UPDATED, 0L);
-        File target = new File(getFilesDir(), FILTER_FILE);
-        if (target.isFile() && System.currentTimeMillis() - updatedAt < FILTER_REFRESH_MS) return;
-
-        new Thread(() -> {
-            HttpURLConnection connection = null;
-            File temp = new File(getFilesDir(), FILTER_FILE + ".tmp");
-            try {
-                connection = (HttpURLConnection) new URL(FILTER_URL).openConnection();
-                connection.setConnectTimeout(10000);
-                connection.setReadTimeout(20000);
-                connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "Live-TV/1.3.4 Android");
-
-                int status = connection.getResponseCode();
-                if (status < 200 || status >= 300) return;
-
-                try (InputStream input = connection.getInputStream();
-                     FileOutputStream output = new FileOutputStream(temp)) {
-                    byte[] buffer = new byte[16384];
-                    int read;
-                    while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
-                    output.flush();
-                }
-
-                try (InputStream input = new FileInputStream(temp)) {
-                    applyFilter(input);
-                }
-
-                if (target.exists() && !target.delete()) return;
-                if (!temp.renameTo(target)) return;
-                prefs.edit().putLong(KEY_FILTER_UPDATED, System.currentTimeMillis()).apply();
-            } catch (Exception ignored) {
-            } finally {
-                if (connection != null) connection.disconnect();
-                if (temp.exists() && !temp.equals(target)) temp.delete();
-            }
-        }, "AdGuardFilterRefresh").start();
-    }
-
-    private void applyFilter(InputStream input) throws Exception {
-        Set<String> blocked = new HashSet<>();
-        Set<String> allowed = new HashSet<>();
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(input, StandardCharsets.UTF_8))) {
-            String raw;
-            while ((raw = reader.readLine()) != null) {
-                parseRule(raw, blocked, allowed);
-            }
-        }
-
-        if (blocked.size() < 100) throw new IllegalStateException("AdGuard list too small");
-
-        adGuardBlockedHosts = Collections.unmodifiableSet(blocked);
-        adGuardAllowedHosts = Collections.unmodifiableSet(allowed);
-    }
-
-    private void parseRule(String raw, Set<String> blocked, Set<String> allowed) {
-        String line = raw == null ? "" : raw.trim();
-        if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || line.startsWith("#")) return;
-
-        boolean exception = false;
-        if (line.startsWith("@@")) {
-            exception = true;
-            line = line.substring(2);
-        }
-
-        int modifier = line.indexOf('$');
-        if (modifier >= 0) line = line.substring(0, modifier);
-
-        String domain = null;
-        if (line.startsWith("||")) {
-            domain = line.substring(2);
-            int cut = firstDelimiter(domain);
-            if (cut >= 0) domain = domain.substring(0, cut);
-        } else if (line.startsWith("0.0.0.0 ") || line.startsWith("127.0.0.1 ")) {
-            int space = line.indexOf(' ');
-            domain = line.substring(space + 1).trim();
-        } else if (looksLikePlainDomain(line)) {
-            domain = line;
-        }
-
-        domain = cleanDomain(domain);
-        if (domain == null) return;
-
-        if (exception) allowed.add(domain);
-        else blocked.add(domain);
-    }
-
-    private int firstDelimiter(String value) {
-        int best = -1;
-        char[] delimiters = {'^', '/', '|', '*'};
-        for (char delimiter : delimiters) {
-            int at = value.indexOf(delimiter);
-            if (at >= 0 && (best < 0 || at < best)) best = at;
-        }
-        return best;
-    }
-
-    private boolean looksLikePlainDomain(String value) {
-        return value.indexOf('.') > 0
-                && value.indexOf('/') < 0
-                && value.indexOf('*') < 0
-                && value.indexOf('^') < 0
-                && value.indexOf('|') < 0
-                && value.indexOf(' ') < 0;
-    }
-
-    private String cleanDomain(String value) {
-        if (value == null) return null;
-        String domain = value.trim().toLowerCase(Locale.ROOT);
-        while (domain.startsWith(".")) domain = domain.substring(1);
-        while (domain.endsWith(".")) domain = domain.substring(0, domain.length() - 1);
-        if (domain.isEmpty() || domain.equals("localhost") || domain.indexOf('.') < 0) return null;
-        try {
-            domain = IDN.toASCII(domain).toLowerCase(Locale.ROOT);
-        } catch (Exception ignored) {
-            return null;
-        }
-        if (!domain.matches("[a-z0-9._-]+")) return null;
-        return domain;
     }
 
     private static Set<String> unmodifiableSet(String... values) {
