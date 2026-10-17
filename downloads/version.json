@@ -1,9 +1,9 @@
 {
-  "versionCode": 16,
-  "versionName": "1.4.4",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.4.4.apk",
+  "versionCode": 17,
+  "versionName": "1.5.0",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.0.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "Primeira baseline oficial com assinatura Android permanente.",
-  "publishedAt": "2026-10-17T09:34:13Z"
+  "notes": "Ordenação A–Z/Z–A, reordenação manual e backup/restauro completo.",
+  "publishedAt": "2026-10-17T09:34:34Z"
 }
