@@ -105,7 +105,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Live-TV-v1.4.3-ui-foundation
-          path: ${{ env.APK_PATH }}
+          path: Live-TV-v1.4.3.apk
           if-no-files-found: error
 
       - name: Publish APK and update manifest to GitHub Pages
