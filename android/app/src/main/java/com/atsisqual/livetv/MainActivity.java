@@ -25,9 +25,9 @@ import java.util.Set;
 public class MainActivity extends Activity {
 
     /*
-     * 1.3.6 uses targeted ad/tracker blocking only.
-     * Player infrastructure must never be placed in this host blacklist because
-     * several providers depend on rotating/nested domains and on the Referer header.
+     * 1.3.8 keeps player infrastructure intact and blocks only confirmed ad/tracker
+     * resources. Imported channels now open as top-level WebView pages so Cloudflare
+     * Challenge Pages can run in a supported context instead of a cross-origin iframe.
      */
     private static final Set<String> BLOCKED_HOSTS = unmodifiableSet(
             "histats.com",
@@ -52,6 +52,25 @@ public class MainActivity extends Activity {
             "amung.us",
             "serveproxy.com",
             "protrafficinspector.com"
+    );
+
+    /* Hosts that are part of the wrapper/player navigation chain and may legitimately
+       replace the current top-level page. Unknown top-level HTTP(S) takeovers are denied. */
+    private static final Set<String> PLAYER_HOSTS = unmodifiableSet(
+            "apitotal.net",
+            "reidosembeds.lat",
+            "wideiptv.top",
+            "sportsonliine.click",
+            "sportsonline.st",
+            "rdembed.sbs",
+            "tossequip.net",
+            "xstream.to",
+            "dlhd.st",
+            "dlive.sx",
+            "dlstreams.st",
+            "comeumamao.monster",
+            "rtp.pt",
+            "challenges.cloudflare.com"
     );
 
     private FrameLayout root;
@@ -80,14 +99,18 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
+        s.setAllowFileAccess(true);
+        s.setAllowContentAccess(true);
         s.setJavaScriptCanOpenWindowsAutomatically(false);
         s.setSupportMultipleWindows(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
+        /* Keep the default WebView UA stable throughout a Cloudflare challenge. */
+        s.setUserAgentString(s.getUserAgentString());
+
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
 
-        /* Runs before page scripts in matching frames, including nested cross-origin iframes. */
         AdCleaner.install(web);
 
         web.setWebViewClient(new WebViewClient() {
@@ -95,16 +118,25 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 if (isBlocked(uri)) return true;
+                if (!request.isForMainFrame() || !isHttp(uri)) return false;
 
-                /* Keep third-party frames from replacing the local application page. */
-                if (request.isForMainFrame() && isHttp(uri) && !isRtp(uri)) return true;
-                return false;
+                String current = view.getUrl();
+
+                /* A channel click from our local home page is an explicit user navigation. */
+                if (current != null && (current.startsWith("file:///android_asset/")
+                        || current.startsWith("about:"))) {
+                    return false;
+                }
+
+                /* Allow only known player/wrapper top-level navigation after leaving home. */
+                String host = normalizedHost(uri);
+                return host == null || !matchesAny(host, PLAYER_HOSTS);
             }
 
             @Override
             @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                /* Old callback has no isForMainFrame(), therefore only explicit ads are denied. */
+                /* API 23 does not expose isForMainFrame(); only confirmed ad destinations are denied. */
                 return isBlocked(Uri.parse(url));
             }
 
@@ -119,7 +151,7 @@ public class MainActivity extends Activity {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
                                           android.os.Message resultMsg) {
-                /* No secondary WebView/window: kills classic popup/popunder advertising. */
+                /* Do not create secondary WebViews/windows: classic popup/popunder ads die here. */
                 return false;
             }
 
@@ -148,11 +180,6 @@ public class MainActivity extends Activity {
         return "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
     }
 
-    private boolean isRtp(Uri uri) {
-        String host = normalizedHost(uri);
-        return host != null && domainMatches(host, "rtp.pt");
-    }
-
     private boolean isBlocked(Uri uri) {
         String host = normalizedHost(uri);
         if (host == null) return false;
@@ -162,20 +189,15 @@ public class MainActivity extends Activity {
         String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
         String query = uri.getQuery() == null ? "" : uri.getQuery().toLowerCase(Locale.ROOT);
 
-        /* EasyList documents this affiliate URL as popup advertising. */
         if ("s.click.aliexpress.com".equals(host)
                 && path.startsWith("/e/")
                 && query.contains("dp=")) {
             return true;
         }
 
-        /* Same-origin image observed on the sportsonliine wrapper. */
         if (path.endsWith("/sccfwxq.png")) return true;
-
-        /* EasyList/uBlock documented DaddyLive/DLHD ad banner. */
         if (path.endsWith("/rs4k-adbanner.html")) return true;
 
-        /* Tracker observed on the sportsonliine wrapper. */
         if (domainMatches(host, "sharethis.com") && path.startsWith("/pd/dtscout")) return true;
 
         return false;
