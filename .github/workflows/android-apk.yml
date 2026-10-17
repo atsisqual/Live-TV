@@ -8,6 +8,9 @@ on:
       - 'android/**'
       - '.github/workflows/android-apk.yml'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -63,3 +66,29 @@ jobs:
           name: Live-TV-v1.4.0-ui-redesign
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish APK to GitHub Pages
+        shell: bash
+        env:
+          APK_VERSION: '1.4.0'
+        run: |
+          set -euxo pipefail
+          APK="$GITHUB_WORKSPACE/android/app/build/outputs/apk/debug/app-debug.apk"
+          PAGES="$RUNNER_TEMP/live-tv-gh-pages"
+
+          git fetch origin gh-pages
+          git worktree add -B publish-apk "$PAGES" origin/gh-pages
+
+          mkdir -p "$PAGES/downloads"
+          cp "$APK" "$PAGES/downloads/Live-TV-v${APK_VERSION}.apk"
+          cp "$APK" "$PAGES/downloads/Live-TV-latest.apk"
+
+          cd "$PAGES"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add downloads/Live-TV-v${APK_VERSION}.apk downloads/Live-TV-latest.apk
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish Live TV v${APK_VERSION} APK"
+            git push origin HEAD:gh-pages
+          fi
