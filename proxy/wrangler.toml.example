@@ -1,0 +1,19 @@
+name = "live-tv-clean-proxy"
+main = "src/index.js"
+compatibility_date = "2026-10-17"
+workers_dev = true
+
+[vars]
+# Exact HTTPS hosts that you own or are authorized to proxy.
+# Example only — replace before deploy.
+ALLOWED_HOSTS = "player.example.com,static.example.com"
+
+# Requests/elements pointing to these hosts are removed/blocked.
+BLOCKED_HOSTS = "ads.example.com,tracker.example.com,s.click.aliexpress.com"
+
+# Case-insensitive URL substrings to block.
+BLOCKED_URL_PATTERNS = "/ads/,/tracking/,doubleclick,affiliate"
+
+# CSS selectors removed from HTML and continuously removed by MutationObserver.
+# Keep selectors targeted; broad selectors such as [class*=ad] can break legitimate UI.
+HIDE_SELECTORS = ".ad-overlay,.advertisement,[data-ad-slot]"
