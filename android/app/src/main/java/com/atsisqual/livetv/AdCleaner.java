@@ -13,9 +13,10 @@ final class AdCleaner {
     private AdCleaner() {}
 
     /*
-     * Do NOT inject into rdembed/comeumamao: Cloudflare Challenge Pages require an
-     * unmodified browser environment and cannot run inside cross-origin iframes.
-     * Native WebView filtering still blocks confirmed ad requests and secondary windows.
+     * Player pages are intentionally left in their normal embedding context.
+     * In particular, wideiptv Player 1 can behave differently when opened as a
+     * top-level page, so API Total remains the wrapper and we only lock its UI
+     * to Player 1. rdembed is still promoted when Cloudflare requires top-level.
      */
     private static final Set<String> PLAYER_ORIGINS = new HashSet<>(Arrays.asList(
             "https://apitotal.net",
@@ -64,6 +65,7 @@ final class AdCleaner {
           ];
 
           const ATTRS = ['href','src','action','data-href','data-url','data-link','onclick'];
+          let apiTotalPlayer1Activated = false;
 
           const isBlockedValue = value => {
             if (!value) return false;
@@ -103,14 +105,72 @@ final class AdCleaner {
             }
           };
 
+          const isApiTotal = () =>
+            location.hostname === 'apitotal.net' || location.hostname.endsWith('.apitotal.net');
+
+          const normalizedText = el =>
+            String((el && (el.innerText || el.textContent)) || '')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .toUpperCase();
+
+          const hidePlayerChoiceUi = () => {
+            if (!isApiTotal()) return;
+
+            document.querySelectorAll('button,a,[role="button"],[role="option"],[role="menuitem"],option,label')
+              .forEach(el => {
+                const t = normalizedText(el);
+                if (/^PLAYER\s*\d+$/.test(t)) disable(el);
+              });
+
+            document.querySelectorAll('h1,h2,h3,h4,p,span,div')
+              .forEach(el => {
+                const t = normalizedText(el);
+                if (!t || t.length > 90) return;
+                if (!t.includes('ESCOLHA OUTRO PLAYER') && !t.includes('ESCOLHER OUTRO PLAYER')) return;
+                if (el.querySelector && el.querySelector('iframe,video')) return;
+                disable(el);
+              });
+          };
+
+          const ensurePlayer1 = () => {
+            if (!isApiTotal() || apiTotalPlayer1Activated) {
+              hidePlayerChoiceUi();
+              return;
+            }
+
+            /* API Total currently defaults to Player 1 by mounting its iframe. */
+            const liveFrame = [...document.querySelectorAll('iframe[src]')].find(frame => {
+              try {
+                const u = new URL(frame.getAttribute('src'), location.href);
+                return /^https?:$/.test(u.protocol) && !isBlockedValue(u.href);
+              } catch (_) { return false; }
+            });
+
+            if (liveFrame) {
+              apiTotalPlayer1Activated = true;
+              hidePlayerChoiceUi();
+              return;
+            }
+
+            /* Fallback for layouts that wait for a selection before creating the iframe. */
+            const controls = [...document.querySelectorAll('button,a,[role="button"],[role="option"],[role="menuitem"],option,label')];
+            const first = controls.find(el => /^PLAYER\s*1$/.test(normalizedText(el)));
+            if (first) {
+              apiTotalPlayer1Activated = true;
+              try { first.click(); } catch (_) {}
+            }
+            hidePlayerChoiceUi();
+          };
+
           /*
-           * rdembed can return a Cloudflare interstitial, and Cloudflare explicitly does
-           * not support Challenge Pages inside cross-origin iframes. When an apitotal
-           * wrapper selects rdembed, promote that iframe to the top-level page instead.
+           * Cloudflare Challenge Pages do not work reliably inside a cross-origin
+           * iframe. If API Total's selected Player 1 is rdembed, promote only that
+           * iframe after API Total has selected it.
            */
           const maybePromoteRdembed = node => {
             if (window.top !== window) return false;
-            if (!location.hostname.endsWith('apitotal.net')) return false;
+            if (!isApiTotal()) return false;
 
             const frames = [];
             if (node && node.nodeType === 1 && node.matches && node.matches('iframe[src]')) frames.push(node);
@@ -145,6 +205,15 @@ final class AdCleaner {
                   disable(node);
                   return false;
                 }
+
+                if (isApiTotal() && node && node.nodeType === 1) {
+                  const t = normalizedText(node);
+                  if (/^PLAYER\s*[2-9]\d*$/.test(t)) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    return false;
+                  }
+                }
               }
             } catch (_) {}
           }, true);
@@ -156,6 +225,7 @@ final class AdCleaner {
             }
 
             cleanElement(document.documentElement);
+            ensurePlayer1();
             maybePromoteRdembed(document.documentElement);
 
             new MutationObserver(mutations => {
@@ -169,12 +239,17 @@ final class AdCleaner {
                   maybePromoteRdembed(node);
                 }
               }
+              ensurePlayer1();
             }).observe(document.documentElement, {
               childList: true,
               subtree: true,
               attributes: true,
               attributeFilter: ['href','src','onclick','data-href','data-url','data-link']
             });
+
+            setTimeout(ensurePlayer1, 250);
+            setTimeout(ensurePlayer1, 800);
+            setTimeout(ensurePlayer1, 1800);
           };
 
           start();
