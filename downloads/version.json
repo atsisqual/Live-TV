@@ -1,9 +1,9 @@
 {
-  "versionCode": 15,
-  "versionName": "1.4.3",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.4.3.apk",
+  "versionCode": 16,
+  "versionName": "1.4.4",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.4.4.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "Novo icon e splash, update checker e estados nativos de loading, erro e retry.",
-  "publishedAt": "2026-10-17T09:24:23Z"
+  "notes": "Primeira baseline oficial com assinatura Android permanente.",
+  "publishedAt": "2026-10-17T09:24:47Z"
 }
