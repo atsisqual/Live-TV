@@ -1,0 +1,186 @@
+name: Build M3U Test App
+
+on:
+  push:
+    branches: [m3u-test-app]
+    paths:
+      - '.github/workflows/build-m3u-test-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
+  SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
+  SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS || secrets.ANDROID_KEY_ALIAS }}
+  SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD || secrets.ANDROID_KEY_PASSWORD }}
+
+jobs:
+  build-m3u-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout test branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply isolated M3U app patch
+        run: python .github/scripts/create_m3u_test_app.py
+
+      - name: Embed current M3UPT playlist snapshot
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ASSETS="android/app/src/main/assets"
+          mkdir -p "$ASSETS"
+          curl --fail --location --retry 3 \
+            -A 'TV-do-Ze-M3U-Test-Build' \
+            'https://raw.githubusercontent.com/LITUATUI/M3UPT/main/M3U/M3UPT.m3u' \
+            -o "$ASSETS/M3UPT.m3u"
+          curl --fail --location --retry 3 \
+            -A 'TV-do-Ze-M3U-Test-Build' \
+            'https://raw.githubusercontent.com/LITUATUI/M3UPT/main/LICENSE' \
+            -o "$ASSETS/M3UPT-LICENSE.txt"
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          p = Path('android/app/src/main/assets/M3UPT.m3u')
+          raw = p.read_text(encoding='utf-8')
+          count = raw.count('#EXTINF:')
+          if count < 5:
+              raise SystemExit(f'Unexpected M3UPT channel count: {count}')
+          Path('android/app/src/main/assets/m3upt-base.js').write_text(
+              'window.M3UPT_BASE_M3U = ' + json.dumps(raw, ensure_ascii=False) + ';\n',
+              encoding='utf-8'
+          )
+          print(f'Embedded {count} M3UPT entries')
+          PY
+
+      - name: Commit generated test app source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "Create isolated M3U test app"
+            git push origin HEAD:m3u-test-app
+          fi
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Install Android platform
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SDKMANAGER=/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Prepare release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SIGNING_KEY_BASE64:-}" || -z "${SIGNING_STORE_PASSWORD:-}" || -z "${SIGNING_KEY_ALIAS:-}" || -z "${SIGNING_KEY_PASSWORD:-}" ]]; then
+            echo "::error::Permanent Android signing secrets are required."
+            exit 1
+          fi
+          KEYSTORE="$RUNNER_TEMP/tv-do-ze-m3u-test.jks"
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
+          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$SIGNING_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$SIGNING_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$SIGNING_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Resolve test app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_VERSION="$(sed -n "s/^[[:space:]]*versionName[[:space:]]*'\([^']*\)'.*/\1/p" android/app/build.gradle | head -n1)"
+          APK_VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9][0-9]*\).*/\1/p' android/app/build.gradle | head -n1)"
+          echo "APK_VERSION=$APK_VERSION" >> "$GITHUB_ENV"
+          echo "APK_VERSION_CODE=$APK_VERSION_CODE" >> "$GITHUB_ENV"
+
+      - name: Build signed test APK
+        working-directory: android
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle :app:assembleRelease --stacktrace
+          SOURCE="$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk"
+          APK="$GITHUB_WORKSPACE/TV-do-Ze-M3U-Test-v${APK_VERSION}.apk"
+          cp "$SOURCE" "$APK"
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+
+      - name: Validate separate package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -s "$APK_PATH"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK_PATH" | tee /tmp/m3u-test-badging.txt
+          grep "package: name='com.atsisqual.livetv.m3utest'" /tmp/m3u-test-badging.txt
+          grep "versionCode='${APK_VERSION_CODE}'" /tmp/m3u-test-badging.txt
+          grep "versionName='${APK_VERSION}'" /tmp/m3u-test-badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK_PATH"
+
+      - name: Upload M3U test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TV-do-Ze-M3U-Test-APK
+          path: TV-do-Ze-M3U-Test-*.apk
+          if-no-files-found: error
+
+      - name: Publish test APK separately
+        shell: bash
+        run: |
+          set -euxo pipefail
+          PAGES="$RUNNER_TEMP/live-tv-gh-pages"
+          git fetch origin gh-pages
+          git worktree add -B publish-m3u-test "$PAGES" origin/gh-pages
+          TARGET="$PAGES/downloads/m3u-test"
+          mkdir -p "$TARGET"
+          cp "$APK_PATH" "$TARGET/TV-do-Ze-M3U-Test-v${APK_VERSION}.apk"
+          cp "$APK_PATH" "$TARGET/TV-do-Ze-M3U-Test-latest.apk"
+          cat > "$TARGET/version.json" <<EOF
+          {
+            "versionCode": ${APK_VERSION_CODE},
+            "versionName": "${APK_VERSION}",
+            "packageName": "com.atsisqual.livetv.m3utest",
+            "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/m3u-test/TV-do-Ze-M3U-Test-v${APK_VERSION}.apk",
+            "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/m3u-test/TV-do-Ze-M3U-Test-latest.apk",
+            "autoUpdate": false,
+            "playlistSource": "https://github.com/LITUATUI/M3UPT",
+            "notes": "App de testes separada. Lista base M3UPT embebida no APK e player nativo HLS/DASH com headers M3U.",
+            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          cd "$PAGES"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add downloads/m3u-test
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish TV do Zé M3U Test v${APK_VERSION}"
+            git push origin HEAD:gh-pages
+          fi
