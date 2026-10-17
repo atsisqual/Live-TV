@@ -473,7 +473,7 @@ public class MainActivity extends Activity {
                         + "if(!m.paused){report('playing');stop();}}}catch(e){}}"
                         + "function p(r){try{var q=(r||document);if(q.matches&&q.matches('video,audio'))tune(q);"
                         + "q.querySelectorAll&&q.querySelectorAll('video,audio').forEach(tune);}catch(e){}}"
-                        + "p(document);obs=new MutationObserver(function(ms){if(done)return;ms.forEach(function(x){"
+                        + "p(document);if(done)return;obs=new MutationObserver(function(ms){if(done)return;ms.forEach(function(x){"
                         + "x.addedNodes&&x.addedNodes.forEach(function(n){if(n.nodeType===1)p(n);});});});"
                         + "try{obs.observe(document.documentElement,{childList:true,subtree:true});}catch(e){}"
                         + "setTimeout(stop,12000);})();",
