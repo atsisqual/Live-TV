@@ -827,15 +827,21 @@ public class EpgMainActivity extends MainActivity {
         @JavascriptInterface
         public void rememberChannel(String value) {
             WebView current = webView;
-            if (current == null || !isHome(current.getUrl())) return;
-            handler.post(() -> EpgMainActivity.this.rememberChannel(value));
+            if (current == null) return;
+            current.post(() -> {
+                if (!isHome(current.getUrl())) return;
+                EpgMainActivity.this.rememberChannel(value);
+            });
         }
 
         @JavascriptInterface
         public void enableDirectMode(String value) {
             WebView current = webView;
-            if (current == null || !isHome(current.getUrl())) return;
-            handler.post(() -> enableDirectPlayerMode(value));
+            if (current == null) return;
+            current.post(() -> {
+                if (!isHome(current.getUrl())) return;
+                enableDirectPlayerMode(value);
+            });
         }
     }
 
