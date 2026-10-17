@@ -4,6 +4,79 @@
   if (window.__liveTvDirectModeUi) return;
   window.__liveTvDirectModeUi = true;
 
+  if (!window.LiveTvProviderRegistry) {
+    window.LiveTvProviderRegistry = {
+      isManaged: function (slug) { return String(slug || '').toLowerCase() === 'canal-11'; },
+      resolve: function () { return ''; }
+    };
+  }
+
+  (function loadProviderRegistry() {
+    try {
+      if (document.querySelector('script[data-livetv-provider-registry]')) return;
+      var script = document.createElement('script');
+      script.src = 'file:///android_asset/provider-registry.js';
+      script.async = false;
+      script.setAttribute('data-livetv-provider-registry', '1');
+      (document.head || document.documentElement).appendChild(script);
+    } catch (e) {}
+  })();
+
+  function slugOf(item) {
+    try {
+      var slug = String(item && item.slug ? item.slug : '').trim().toLowerCase();
+      if (slug) return slug;
+      var raw = String(item && item.url ? item.url : '').toLowerCase();
+      if (/https?:\/\/apitotal\.net\/[^?#]*\/canal-11(?:[?#]|$)/i.test(raw)) return 'canal-11';
+      return '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function playerNumberFor(item) {
+    try {
+      var n = parseInt(item && item.player, 10);
+      if (isFinite(n) && n >= 1 && n <= 20) return n;
+      var raw = String(item && item.url ? item.url : '');
+      var match = raw.match(/(?:#|[?&])livetv-player=(\d{1,2})/i);
+      n = match ? parseInt(match[1], 10) : 1;
+      return isFinite(n) && n >= 1 && n <= 20 ? n : 1;
+    } catch (e) {
+      return 1;
+    }
+  }
+
+  function registry() {
+    return window.LiveTvProviderRegistry || null;
+  }
+
+  function isManaged(item) {
+    try {
+      var r = registry();
+      return !!(r && typeof r.isManaged === 'function' && r.isManaged(slugOf(item)));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function directProviderUrl(item) {
+    try {
+      var r = registry();
+      if (!r || typeof r.resolve !== 'function') return '';
+      var value = String(r.resolve(slugOf(item), playerNumberFor(item)) || '').trim();
+      return /^https?:\/\//i.test(value) ? value : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function unavailableUrl(item) {
+    var slug = slugOf(item) || 'canal';
+    return 'file:///android_asset/provider-unavailable.html?channel=' + encodeURIComponent(slug) +
+      '&player=' + playerNumberFor(item);
+  }
+
   function externalPlayerUrl(item) {
     try {
       if (!item || !item.url) return '';
@@ -16,54 +89,15 @@
     }
   }
 
-  function playerNumberFor(item) {
-    try {
-      var n = parseInt(item && item.player, 10);
-      if (isFinite(n) && n >= 1 && n <= 20) return n;
-      var raw = String(item && item.url ? item.url : '');
-      var match = raw.match(/(?:#|[?&])livetv-player=(\d{1,2})/i);
-      n = match ? parseInt(match[1], 10) : 0;
-      return isFinite(n) && n >= 1 && n <= 20 ? n : 1;
-    } catch (e) {
-      return 1;
-    }
-  }
-
-  function isCanal11(item) {
-    try {
-      if (!item) return false;
-      var slug = String(item.slug || '').trim().toLowerCase();
-      if (slug === 'canal-11') return true;
-      var raw = String(item.url || '').toLowerCase();
-      return /https?:\/\/apitotal\.net\/[^?#]*\/canal-11(?:[?#]|$)/i.test(raw);
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function gatewayUrl(item) {
-    if (!isCanal11(item)) return '';
-    try {
-      var source = externalPlayerUrl(item);
-      if (!/^https?:\/\//i.test(source)) return '';
-      var name = String(item && item.name ? item.name : 'Canal 11');
-      var p = playerNumberFor(item);
-      return 'file:///android_asset/player-gateway.html?channel=canal-11&name=' + encodeURIComponent(name) +
-        '&player=' + p + '&players=3&source=' + encodeURIComponent(source);
-    } catch (e) {
-      return '';
-    }
-  }
-
   function resolvedPlayerUrl(item) {
-    var gateway = gatewayUrl(item);
-    return gateway || externalPlayerUrl(item);
+    if (isManaged(item)) return directProviderUrl(item) || unavailableUrl(item);
+    return externalPlayerUrl(item);
   }
 
-  function installResolvedPlayerItems() {
+  function installResolvedProviderItems() {
     try {
       if (typeof window.allItems !== 'function') return false;
-      if (window.allItems.__liveTvPlayerResolved) return true;
+      if (window.allItems.__liveTvProviderRegistryResolved) return true;
 
       var originalAllItems = window.allItems;
       var wrappedAllItems = function () {
@@ -78,8 +112,8 @@
         });
       };
 
-      wrappedAllItems.__liveTvPlayerResolved = true;
-      wrappedAllItems.__liveTvOriginal = originalAllItems;
+      wrappedAllItems.__liveTvProviderRegistryResolved = true;
+      wrappedAllItems.__liveTvProviderRegistryOriginal = originalAllItems;
       window.allItems = wrappedAllItems;
       return true;
     } catch (e) {
@@ -87,11 +121,11 @@
     }
   }
 
-  if (!installResolvedPlayerItems()) {
+  if (!installResolvedProviderItems()) {
     var installAttempts = 0;
     var installTimer = setInterval(function () {
       installAttempts += 1;
-      if (installResolvedPlayerItems() || installAttempts >= 40) {
+      if (installResolvedProviderItems() || installAttempts >= 40) {
         clearInterval(installTimer);
       }
     }, 250);
@@ -105,7 +139,9 @@
       var recent = loadRecent();
       for (var i = 0; i < recent.length; i++) {
         var item = byKey.get(recent[i]);
-        if (item && item.url && (/^https?:\/\//i.test(String(item.url)) || /^file:\/\/\/android_asset\/player-gateway\.html/i.test(String(item.url)))) return item;
+        if (!item) continue;
+        if (isManaged(item)) return item;
+        if (item.url && /^https?:\/\//i.test(String(item.url))) return item;
       }
     } catch (e) {}
     return null;
@@ -113,8 +149,9 @@
 
   function remember(item) {
     try {
+      if (isManaged(item) && !directProviderUrl(item)) return;
       var url = resolvedPlayerUrl(item);
-      if (url && window.LiveTvEpg && typeof window.LiveTvEpg.rememberChannel === 'function') {
+      if (url && /^https?:\/\//i.test(url) && window.LiveTvEpg && typeof window.LiveTvEpg.rememberChannel === 'function') {
         window.LiveTvEpg.rememberChannel(url);
       }
     } catch (e) {}
@@ -123,18 +160,24 @@
   if (typeof window.openChannel === 'function' && !window.openChannel.__liveTvDirectWrapped) {
     var originalOpenChannel = window.openChannel;
     var wrappedOpenChannel = function (item) {
-      var gateway = gatewayUrl(item);
-      remember(item);
-
-      if (gateway) {
+      if (isManaged(item)) {
+        var direct = directProviderUrl(item);
         try {
           if (typeof rememberRecent === 'function') rememberRecent(item);
           sessionStorage.setItem('tv-scroll-v1', String(window.scrollY || 0));
         } catch (e) {}
-        window.location.href = gateway;
+
+        if (!direct) {
+          if (typeof showToast === 'function') showToast('Provider direto não configurado para este canal');
+          return;
+        }
+
+        remember(item);
+        window.location.href = direct;
         return;
       }
 
+      remember(item);
       return originalOpenChannel(item);
     };
     wrappedOpenChannel.__liveTvDirectWrapped = true;
@@ -145,6 +188,11 @@
     var item = lastChannelItem();
     if (!item) {
       if (typeof showToast === 'function') showToast('Abre primeiro um canal para definir o último canal');
+      return;
+    }
+
+    if (isManaged(item) && !directProviderUrl(item)) {
+      if (typeof showToast === 'function') showToast('Provider direto não configurado para este canal');
       return;
     }
 
@@ -164,6 +212,11 @@
     var item = lastChannelItem();
     if (!item) {
       if (typeof showToast === 'function') showToast('Abre primeiro um canal para definir o último canal');
+      return;
+    }
+
+    if (isManaged(item) && !directProviderUrl(item)) {
+      if (typeof showToast === 'function') showToast('Provider direto não configurado para este canal');
       return;
     }
 
