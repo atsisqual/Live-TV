@@ -4,7 +4,7 @@
   if (window.__liveTvDirectModeUi) return;
   window.__liveTvDirectModeUi = true;
 
-  function resolvedPlayerUrl(item) {
+  function externalPlayerUrl(item) {
     try {
       if (!item || !item.url) return '';
       if (typeof playerUrl === 'function') {
@@ -14,6 +14,50 @@
     } catch (e) {
       return String(item && item.url ? item.url : '');
     }
+  }
+
+  function playerNumberFor(item) {
+    try {
+      var n = parseInt(item && item.player, 10);
+      if (isFinite(n) && n >= 1 && n <= 20) return n;
+      var raw = String(item && item.url ? item.url : '');
+      var match = raw.match(/(?:#|[?&])livetv-player=(\d{1,2})/i);
+      n = match ? parseInt(match[1], 10) : 0;
+      return isFinite(n) && n >= 1 && n <= 20 ? n : 1;
+    } catch (e) {
+      return 1;
+    }
+  }
+
+  function isCanal11(item) {
+    try {
+      if (!item) return false;
+      var slug = String(item.slug || '').trim().toLowerCase();
+      if (slug === 'canal-11') return true;
+      var raw = String(item.url || '').toLowerCase();
+      return /https?:\/\/apitotal\.net\/[^?#]*\/canal-11(?:[?#]|$)/i.test(raw);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function gatewayUrl(item) {
+    if (!isCanal11(item)) return '';
+    try {
+      var source = externalPlayerUrl(item);
+      if (!/^https?:\/\//i.test(source)) return '';
+      var name = String(item && item.name ? item.name : 'Canal 11');
+      var p = playerNumberFor(item);
+      return 'file:///android_asset/player-gateway.html?channel=canal-11&name=' + encodeURIComponent(name) +
+        '&player=' + p + '&players=3&source=' + encodeURIComponent(source);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function resolvedPlayerUrl(item) {
+    var gateway = gatewayUrl(item);
+    return gateway || externalPlayerUrl(item);
   }
 
   function installResolvedPlayerItems() {
@@ -61,7 +105,7 @@
       var recent = loadRecent();
       for (var i = 0; i < recent.length; i++) {
         var item = byKey.get(recent[i]);
-        if (item && item.url && /^https?:\/\//i.test(String(item.url))) return item;
+        if (item && item.url && (/^https?:\/\//i.test(String(item.url)) || /^file:\/\/\/android_asset\/player-gateway\.html/i.test(String(item.url)))) return item;
       }
     } catch (e) {}
     return null;
@@ -79,7 +123,18 @@
   if (typeof window.openChannel === 'function' && !window.openChannel.__liveTvDirectWrapped) {
     var originalOpenChannel = window.openChannel;
     var wrappedOpenChannel = function (item) {
+      var gateway = gatewayUrl(item);
       remember(item);
+
+      if (gateway) {
+        try {
+          if (typeof rememberRecent === 'function') rememberRecent(item);
+          sessionStorage.setItem('tv-scroll-v1', String(window.scrollY || 0));
+        } catch (e) {}
+        window.location.href = gateway;
+        return;
+      }
+
       return originalOpenChannel(item);
     };
     wrappedOpenChannel.__liveTvDirectWrapped = true;
