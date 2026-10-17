@@ -2,9 +2,14 @@ package com.atsisqual.livetv;
 
 import android.app.Activity;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -25,9 +30,9 @@ import java.util.Set;
 public class MainActivity extends Activity {
 
     /*
-     * 1.3.8 keeps player infrastructure intact and blocks only confirmed ad/tracker
-     * resources. Imported channels now open as top-level WebView pages so Cloudflare
-     * Challenge Pages can run in a supported context instead of a cross-origin iframe.
+     * 1.4.0 keeps the stable 1.3.8 player-navigation model, but adds a proper
+     * Android shell around it: safe system-bar insets during normal browsing and
+     * real immersive fullscreen only while a player explicitly requests it.
      */
     private static final Set<String> BLOCKED_HOSTS = unmodifiableSet(
             "histats.com",
@@ -54,8 +59,6 @@ public class MainActivity extends Activity {
             "protrafficinspector.com"
     );
 
-    /* Hosts that are part of the wrapper/player navigation chain and may legitimately
-       replace the current top-level page. Unknown top-level HTTP(S) takeovers are denied. */
     private static final Set<String> PLAYER_HOSTS = unmodifiableSet(
             "apitotal.net",
             "reidosembeds.lat",
@@ -83,13 +86,44 @@ public class MainActivity extends Activity {
         super.onCreate(state);
 
         root = new FrameLayout(this);
+        root.setBackgroundColor(Color.BLACK);
+
         web = new WebView(this);
         web.setBackgroundColor(Color.BLACK);
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
 
+        configureSystemBars();
         configureWebView();
         web.loadUrl("file:///android_asset/index.html");
+    }
+
+    private void configureSystemBars() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(false);
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+            getWindow().setNavigationBarColor(Color.TRANSPARENT);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                getWindow().setNavigationBarContrastEnforced(false);
+            }
+
+            web.setOnApplyWindowInsetsListener((view, windowInsets) -> {
+                if (fullscreen != null) {
+                    view.setPadding(0, 0, 0, 0);
+                    return windowInsets;
+                }
+
+                Insets safe = windowInsets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                return windowInsets;
+            });
+            web.requestApplyInsets();
+        } else {
+            /* Older Android versions still fit content inside system windows by default. */
+            getWindow().setStatusBarColor(Color.BLACK);
+            getWindow().setNavigationBarColor(Color.BLACK);
+        }
     }
 
     private void configureWebView() {
@@ -105,7 +139,7 @@ public class MainActivity extends Activity {
         s.setSupportMultipleWindows(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        /* Keep the default WebView UA stable throughout a Cloudflare challenge. */
+        /* Keep the default WebView UA stable throughout Cloudflare challenges. */
         s.setUserAgentString(s.getUserAgentString());
 
         CookieManager.getInstance().setAcceptCookie(true);
@@ -136,8 +170,18 @@ public class MainActivity extends Activity {
             @Override
             @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                /* API 23 does not expose isForMainFrame(); only confirmed ad destinations are denied. */
                 return isBlocked(Uri.parse(url));
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                boolean localHome = url != null && url.startsWith("file:///android_asset/");
+                if (localHome) {
+                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                } else {
+                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }
             }
 
             @Override
@@ -161,10 +205,12 @@ public class MainActivity extends Activity {
                     callback.onCustomViewHidden();
                     return;
                 }
+
                 fullscreen = view;
                 fullscreenCallback = callback;
                 web.setVisibility(View.GONE);
                 root.addView(view, new FrameLayout.LayoutParams(-1, -1));
+                hideSystemBars();
             }
 
             @Override
@@ -172,6 +218,31 @@ public class MainActivity extends Activity {
                 exitFullscreen();
             }
         });
+    }
+
+    private void hideSystemBars() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.hide(WindowInsets.Type.systemBars());
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        }
+    }
+
+    private void showSystemBars() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) controller.show(WindowInsets.Type.systemBars());
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+        }
     }
 
     private boolean isHttp(Uri uri) {
@@ -247,13 +318,23 @@ public class MainActivity extends Activity {
 
     private void exitFullscreen() {
         if (fullscreen == null) return;
+
         root.removeView(fullscreen);
         fullscreen = null;
+        showSystemBars();
         web.setVisibility(View.VISIBLE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) web.requestApplyInsets();
+
         if (fullscreenCallback != null) {
             fullscreenCallback.onCustomViewHidden();
             fullscreenCallback = null;
         }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && fullscreen != null) hideSystemBars();
     }
 
     @Override
@@ -271,6 +352,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (web != null) {
             web.stopLoading();
             web.destroy();
