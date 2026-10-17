@@ -1,16 +1,9 @@
 (function () {
   'use strict';
 
-  var CHANNELS = Object.freeze({
-    'canal-11': Object.freeze({
-      name: 'Canal 11',
-      players: Object.freeze({
-        1: '',
-        2: '',
-        3: ''
-      })
-    })
-  });
+  // The registry remains available for future direct providers, but no channel
+  // is managed by it unless a working direct source is explicitly configured.
+  var CHANNELS = Object.freeze({});
 
   function normalizeSlug(value) {
     return String(value || '').trim().toLowerCase();

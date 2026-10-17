@@ -6,7 +6,7 @@
 
   if (!window.LiveTvProviderRegistry) {
     window.LiveTvProviderRegistry = {
-      isManaged: function (slug) { return String(slug || '').toLowerCase() === 'canal-11'; },
+      isManaged: function () { return false; },
       resolve: function () { return ''; }
     };
   }
