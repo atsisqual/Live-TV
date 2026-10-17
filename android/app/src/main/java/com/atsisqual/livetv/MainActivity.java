@@ -138,7 +138,7 @@ public class MainActivity extends Activity {
         configureSystemBars();
         configureWebView();
         web.loadUrl(HOME_URL);
-        if (isAutoUpdateEnabled()) checkForUpdates();
+        // M3U test app intentionally has no automatic update channel.
     }
 
     private void buildStatusOverlay() {
@@ -273,6 +273,7 @@ public class MainActivity extends Activity {
 
         AdCleaner.install(web);
         web.addJavascriptInterface(new AppSettingsBridge(), "LiveTvSettings");
+        web.addJavascriptInterface(new M3uPlayerBridge(), "LiveTvM3u");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -515,21 +516,12 @@ public class MainActivity extends Activity {
     }
 
     protected boolean isAutoUpdateEnabled() {
-        return getSharedPreferences(PREFS, MODE_PRIVATE)
-                .getBoolean(PREF_AUTO_UPDATE, true);
+        return false;
     }
 
     private void setAutoUpdateEnabled(boolean enabled) {
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                .putBoolean(PREF_AUTO_UPDATE, enabled)
-                .apply();
-        if (!enabled) {
-            pendingUpdate = null;
-            updateDialogShown = false;
-            return;
-        }
+        pendingUpdate = null;
         updateDialogShown = false;
-        checkForUpdates();
     }
 
     private final class AppSettingsBridge {
@@ -543,6 +535,35 @@ public class MainActivity extends Activity {
             mainHandler.post(() -> {
                 if (web == null || !isLocalHome(web.getUrl())) return;
                 MainActivity.this.setAutoUpdateEnabled(enabled);
+            });
+        }
+    }
+
+
+    private final class M3uPlayerBridge {
+        @JavascriptInterface
+        public void play(String payload) {
+            final String json = payload == null ? "" : payload;
+            mainHandler.post(() -> {
+                try {
+                    if (web == null || !isLocalHome(web.getUrl())) return;
+                    JSONObject item = new JSONObject(json);
+                    String url = item.optString("url", "").trim();
+                    Uri uri = Uri.parse(url);
+                    String scheme = uri.getScheme();
+                    if (uri.getHost() == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                        return;
+                    }
+
+                    Intent intent = new Intent(MainActivity.this, M3uPlayerActivity.class);
+                    intent.putExtra(M3uPlayerActivity.EXTRA_URL, url);
+                    intent.putExtra(M3uPlayerActivity.EXTRA_NAME, item.optString("name", "Canal"));
+                    intent.putExtra(M3uPlayerActivity.EXTRA_USER_AGENT, item.optString("user_agent", ""));
+                    intent.putExtra(M3uPlayerActivity.EXTRA_REFERRER, item.optString("http_referrer", ""));
+                    intent.putExtra(M3uPlayerActivity.EXTRA_ORIGIN, item.optString("http_origin", ""));
+                    startActivity(intent);
+                } catch (Exception ignored) {
+                }
             });
         }
     }

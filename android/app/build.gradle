@@ -13,13 +13,13 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.atsisqual.livetv'
+        applicationId 'com.atsisqual.livetv.m3utest'
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
         // v1.6.11 keeps channel records lightweight; bundled logos stay outside localStorage.
-        versionCode 38
-        versionName '1.6.11'
+        versionCode 1
+        versionName '0.1.0'
     }
 
     buildFeatures {
@@ -56,4 +56,8 @@ android {
 dependencies {
     implementation "androidx.core:core:1.15.0"
     implementation "androidx.webkit:webkit:1.15.0"
+    implementation "androidx.media3:media3-exoplayer:1.5.1"
+    implementation "androidx.media3:media3-exoplayer-hls:1.5.1"
+    implementation "androidx.media3:media3-exoplayer-dash:1.5.1"
+    implementation "androidx.media3:media3-ui:1.5.1"
 }

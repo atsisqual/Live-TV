@@ -102,7 +102,7 @@ public class EpgMainActivity extends MainActivity {
                     if (isHome(url)) {
                         webView.evaluateJavascript(loadEpgScript(), null);
                         webView.evaluateJavascript(loadEpgUrlScript(), null);
-                        webView.evaluateJavascript(loadDirectModeScript(), null);
+                        // Direct-player mode is disabled in the isolated M3U test app.
                     }
                 }
             } catch (Exception ignored) {
@@ -172,7 +172,7 @@ public class EpgMainActivity extends MainActivity {
         directLaunchPending = directPlayerMode;
         handler.postDelayed(injector, 120);
         handler.postDelayed(sidebarWatcher, 180);
-        if (directPlayerMode && isAutoUpdateEnabled()) handler.postDelayed(this::checkDirectModeUpdate, 1400);
+        // No update checks in the isolated M3U test app.
         if (directLaunchPending) handler.postDelayed(this::launchDirectPlayerFallback, 1100);
     }
 
@@ -757,7 +757,7 @@ public class EpgMainActivity extends MainActivity {
         if (statusHomeButton != null) statusHomeButton.setVisibility(View.GONE);
         if (legacyBackButton != null) legacyBackButton.setVisibility(View.GONE);
         if (webView != null) webView.loadUrl(url);
-        if (isAutoUpdateEnabled()) handler.postDelayed(this::checkDirectModeUpdate, 1400);
+        // No update checks in the isolated M3U test app.
     }
 
     private boolean isValidChannelUrl(String value) {
