@@ -180,3 +180,7 @@ The supplied source for `wideiptv.top/player/SPT5` showed that this page is alre
 - `Dazn`, `Dazn2` and `Dazn3` still use legacy `ELEVEN1/2/3` identifiers on the `wideiptv.top` player URLs.
 - Some free channels have a direct media manifest as one of the frontend choices. Those media URLs are not reproduced here; any alternative page/embed URL is retained when present.
 - This is a source-code snapshot, not a guarantee that any third-party player URL remains online or authorized.
+
+## Live TV JSON player selection
+
+The app supports an optional 1-based `player` field for API Total channel entries. Example: `"player": 3` selects API Total Player 3 inside the wrapper before the chooser is hidden. If omitted, Player 1 remains the default. This field selects only the public player/embed alternative already exposed by API Total; it does not contain direct media manifests or tokens.

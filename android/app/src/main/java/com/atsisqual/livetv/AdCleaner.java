@@ -65,6 +65,16 @@ final class AdCleaner {
 
           const ATTRS = ['href','src','action','data-href','data-url','data-link','onclick'];
 
+          const REQUESTED_PLAYER = (() => {
+            try {
+              const m = String(location.hash || '').match(/(?:^#|[&#])livetv-player=(\d{1,2})(?:&|$)/i);
+              const n = m ? parseInt(m[1], 10) : 1;
+              return Number.isFinite(n) && n >= 1 && n <= 20 ? n : 1;
+            } catch (_) { return 1; }
+          })();
+          let playerSelectionDone = REQUESTED_PLAYER <= 1;
+          let playerSelectionBusy = false;
+
           const isBlockedValue = value => {
             if (!value) return false;
             const s = String(value).toLowerCase();
@@ -103,14 +113,64 @@ final class AdCleaner {
             }
           };
 
+          const selectRequestedPlayer = () => {
+            if (window.top !== window) return false;
+            if (!location.hostname.endsWith('apitotal.net')) return false;
+            if (REQUESTED_PLAYER <= 1 || playerSelectionDone || playerSelectionBusy) return playerSelectionDone;
+
+            let chooser = null;
+            try {
+              chooser = [...document.querySelectorAll('.v-select,.v-input,[role=\"combobox\"]')].find(el => {
+                const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
+                return t.includes('PLAYER') && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'));
+              }) || null;
+            } catch (_) {}
+            if (!chooser) return false;
+
+            const wanted = 'PLAYER ' + REQUESTED_PLAYER;
+            try {
+              const current = (chooser.innerText || chooser.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
+              if (current.includes(wanted)) {
+                playerSelectionDone = true;
+                return true;
+              }
+            } catch (_) {}
+
+            playerSelectionBusy = true;
+            try {
+              const control = chooser.querySelector('[role=\"combobox\"],input,.v-field') || chooser;
+              try { control.dispatchEvent(new MouseEvent('mousedown', {bubbles:true,cancelable:true,view:window})); } catch (_) {}
+              try { control.click(); } catch (_) {}
+            } catch (_) {}
+
+            setTimeout(() => {
+              try {
+                const options = [...document.querySelectorAll('[role=\"option\"],.v-list-item,.v-list-item-title')];
+                const option = options.find(el => {
+                  const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
+                  return t === wanted;
+                });
+                if (option) {
+                  const target = option.closest('[role=\"option\"],.v-list-item') || option;
+                  target.click();
+                  playerSelectionDone = true;
+                }
+              } catch (_) {}
+              playerSelectionBusy = false;
+              if (playerSelectionDone) setTimeout(() => hidePlayerChooser(document), 60);
+            }, 140);
+            return false;
+          };
+
           /*
-           * API Total already loads Player 1 by default. Do not click, replace, or
-           * navigate to the first iframe: some players need the wrapper/referrer/cookie
-           * context. We only hide the player chooser so the user never sees Players 2+.
+           * API Total loads Player 1 by default. A channel may request another numbered
+           * player through #livetv-player=N; selection happens inside the API Total
+           * wrapper so referrer/cookie context is preserved. Only then is the chooser hidden.
            */
           const hidePlayerChooser = root => {
             if (window.top !== window) return;
             if (!location.hostname.endsWith('apitotal.net')) return;
+            if (REQUESTED_PLAYER > 1 && !playerSelectionDone) return;
 
             const scope = root && root.querySelectorAll ? root : document;
             const candidates = [];
@@ -122,7 +182,7 @@ final class AdCleaner {
             for (const el of candidates) {
               try {
                 const t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();
-                if (t.includes('PLAYER 1') && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'))) {
+                if (/PLAYER\s+\d+/.test(t) && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'))) {
                   disable(el.closest('.v-input') || el);
                 }
               } catch (_) {}
@@ -192,6 +252,7 @@ final class AdCleaner {
             }
 
             cleanElement(document.documentElement);
+            selectRequestedPlayer();
             hidePlayerChooser(document.documentElement);
             maybePromoteRdembed(document.documentElement);
 
@@ -199,11 +260,13 @@ final class AdCleaner {
               for (const mutation of mutations) {
                 if (mutation.type === 'attributes') {
                   cleanElement(mutation.target);
+                  selectRequestedPlayer();
                   hidePlayerChooser(mutation.target);
                   if (mutation.attributeName === 'src') maybePromoteRdembed(mutation.target);
                 }
                 for (const node of mutation.addedNodes || []) {
                   cleanElement(node);
+                  selectRequestedPlayer();
                   hidePlayerChooser(node);
                   maybePromoteRdembed(node);
                 }
