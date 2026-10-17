@@ -1,9 +1,9 @@
 {
-  "versionCode": 18,
-  "versionName": "1.5.1",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.1.apk",
+  "versionCode": 19,
+  "versionName": "1.5.2",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.2.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "Atualizador integrado: download dentro da app e abertura direta do instalador Android.",
-  "publishedAt": "2026-10-17T11:43:05Z"
+  "notes": "Atualizador reforçado: valida pacote, versão e assinatura digital antes de abrir o instalador.",
+  "publishedAt": "2026-10-17T11:59:59Z"
 }
