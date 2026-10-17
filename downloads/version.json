@@ -1,9 +1,9 @@
 {
-  "versionCode": 28,
-  "versionName": "1.6.1",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.1.apk",
+  "versionCode": 29,
+  "versionName": "1.6.2",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.2.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
   "notes": "DLive direto nos canais Portugal. Bloqueio adicional dos redirects de publicidade observados em dlive/dlhd, mantendo o embed do player intacto. Auto-update ativo.",
-  "publishedAt": "2026-10-17T14:02:17Z"
+  "publishedAt": "2026-10-17T14:03:39Z"
 }
