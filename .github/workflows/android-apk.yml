@@ -11,6 +11,14 @@ on:
 permissions:
   contents: write
 
+env:
+  APK_VERSION: '1.4.3'
+  APK_VERSION_CODE: '15'
+  SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
+  SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+  SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+  SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -47,46 +55,88 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Build debug APK
+      - name: Prepare release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${SIGNING_KEY_BASE64:-}" && -n "${SIGNING_STORE_PASSWORD:-}" && -n "${SIGNING_KEY_ALIAS:-}" && -n "${SIGNING_KEY_PASSWORD:-}" ]]; then
+            KEYSTORE="$RUNNER_TEMP/live-tv-release.jks"
+            printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEYSTORE"
+            test -s "$KEYSTORE"
+            echo "ANDROID_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=$SIGNING_STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=$SIGNING_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=$SIGNING_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "SIGNED_RELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "SIGNED_RELEASE=false" >> "$GITHUB_ENV"
+            echo "Release signing secrets not configured; building debug APK."
+          fi
+
+      - name: Build APK
         working-directory: android
-        run: gradle :app:assembleDebug --stacktrace
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${SIGNED_RELEASE}" == "true" ]]; then
+            gradle :app:assembleRelease --stacktrace
+            SOURCE="$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk"
+          else
+            gradle :app:assembleDebug --stacktrace
+            SOURCE="$GITHUB_WORKSPACE/android/app/build/outputs/apk/debug/app-debug.apk"
+          fi
+
+          APK="$GITHUB_WORKSPACE/Live-TV-v${APK_VERSION}.apk"
+          cp "$SOURCE" "$APK"
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
       - name: Validate APK
         shell: bash
         run: |
           set -euxo pipefail
-          APK="$GITHUB_WORKSPACE/android/app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "package:"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          test -s "$APK_PATH"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK_PATH" | tee /tmp/badging.txt
+          grep "package: name='com.atsisqual.livetv'" /tmp/badging.txt
+          grep "versionCode='${APK_VERSION_CODE}'" /tmp/badging.txt
+          grep "versionName='${APK_VERSION}'" /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK_PATH"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Live-TV-v1.4.2-wrapper-player1-polish
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Live-TV-v1.4.3-ui-foundation
+          path: ${{ env.APK_PATH }}
           if-no-files-found: error
 
-      - name: Publish APK to GitHub Pages
+      - name: Publish APK and update manifest to GitHub Pages
         shell: bash
-        env:
-          APK_VERSION: '1.4.2'
         run: |
           set -euxo pipefail
-          APK="$GITHUB_WORKSPACE/android/app/build/outputs/apk/debug/app-debug.apk"
           PAGES="$RUNNER_TEMP/live-tv-gh-pages"
 
           git fetch origin gh-pages
           git worktree add -B publish-apk "$PAGES" origin/gh-pages
 
           mkdir -p "$PAGES/downloads"
-          cp "$APK" "$PAGES/downloads/Live-TV-v${APK_VERSION}.apk"
-          cp "$APK" "$PAGES/downloads/Live-TV-latest.apk"
+          cp "$APK_PATH" "$PAGES/downloads/Live-TV-v${APK_VERSION}.apk"
+          cp "$APK_PATH" "$PAGES/downloads/Live-TV-latest.apk"
+
+          cat > "$PAGES/downloads/version.json" <<EOF
+          {
+            "versionCode": ${APK_VERSION_CODE},
+            "versionName": "${APK_VERSION}",
+            "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v${APK_VERSION}.apk",
+            "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
+            "signedRelease": ${SIGNED_RELEASE},
+            "notes": "Novo icon e splash, update checker e estados nativos de loading, erro e retry.",
+            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
 
           cd "$PAGES"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add downloads/Live-TV-v${APK_VERSION}.apk downloads/Live-TV-latest.apk
+          git add "downloads/Live-TV-v${APK_VERSION}.apk" downloads/Live-TV-latest.apk downloads/version.json
 
           if ! git diff --cached --quiet; then
             git commit -m "Publish Live TV v${APK_VERSION} APK"
