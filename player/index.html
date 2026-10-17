@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#080a0f">
+  <title>TV do Zé Player Gateway</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#080a0f;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+    body{display:flex;flex-direction:column}.bar{height:54px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:8px 12px;background:#10141b;border-bottom:1px solid #242a34}.title{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}.players{display:flex;gap:6px}.players button,.next{border:1px solid #303744;background:#181d25;color:#e9edf3;border-radius:10px;padding:8px 10px;font-weight:700}.players button.active{background:#f3f5f7;color:#0a0c10;border-color:#f3f5f7}.stage{position:relative;flex:1;min-height:0;background:#000}.stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}.status{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;min-width:220px;max-width:82%;padding:14px 16px;border-radius:14px;background:rgba(10,13,18,.90);border:1px solid rgba(255,255,255,.12);text-align:center;box-shadow:0 16px 50px rgba(0,0,0,.4)}.status[hidden]{display:none}.status b{display:block;margin-bottom:5px}.status small{color:#aab2bf}.next{margin-top:11px}.error{color:#ffabb5}@media(max-width:560px){.bar{height:auto;min-height:54px;flex-wrap:wrap}.title{width:100%;flex-basis:100%}.players{flex:1}.players button{flex:1;padding:8px 6px}}
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <div class="title" id="title">TV do Zé</div>
+    <div class="players" id="players"></div>
+  </div>
+  <div class="stage">
+    <iframe id="frame" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+    <div class="status" id="status"><b>A preparar player…</b><small id="statusText">A carregar configuração.</small><br><button class="next" id="next" hidden>Experimentar próximo player</button></div>
+  </div>
+<script>
+(() => {
+  'use strict';
+  const qs = new URLSearchParams(location.search);
+  const channelKey = (qs.get('channel') || 'canal-11').trim().toLowerCase();
+  const requestedPlayer = Math.max(1, parseInt(qs.get('player') || '1', 10) || 1);
+  const auto = qs.get('auto') === '1';
+  const frame = document.getElementById('frame');
+  const title = document.getElementById('title');
+  const playersEl = document.getElementById('players');
+  const status = document.getElementById('status');
+  const statusText = document.getElementById('statusText');
+  const nextButton = document.getElementById('next');
+  let channel = null;
+  let currentIndex = 0;
+  let slowTimer = null;
+  let autoTimer = null;
+
+  function setStatus(head, text, isError) {
+    status.hidden = false;
+    status.querySelector('b').textContent = head;
+    status.querySelector('b').className = isError ? 'error' : '';
+    statusText.textContent = text || '';
+  }
+
+  function clearTimers() {
+    if (slowTimer) clearTimeout(slowTimer);
+    if (autoTimer) clearTimeout(autoTimer);
+    slowTimer = autoTimer = null;
+  }
+
+  function updateUrl(playerId) {
+    const u = new URL(location.href);
+    u.searchParams.set('channel', channelKey);
+    u.searchParams.set('player', String(playerId));
+    history.replaceState(null, '', u);
+  }
+
+  function renderButtons() {
+    playersEl.innerHTML = '';
+    channel.players.forEach((p, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = p.label || `Player ${p.id}`;
+      if (i === currentIndex) b.classList.add('active');
+      b.addEventListener('click', () => loadPlayer(i, true));
+      playersEl.appendChild(b);
+    });
+  }
+
+  function nextPlayer() {
+    if (!channel || channel.players.length < 2) return;
+    loadPlayer((currentIndex + 1) % channel.players.length, true);
+  }
+
+  function loadPlayer(index, userInitiated) {
+    clearTimers();
+    currentIndex = Math.max(0, Math.min(index, channel.players.length - 1));
+    const p = channel.players[currentIndex];
+    updateUrl(p.id);
+    renderButtons();
+    nextButton.hidden = channel.players.length < 2;
+    setStatus(`A carregar ${p.label || `Player ${p.id}`}…`, 'O fornecedor pode demorar alguns segundos a iniciar.', false);
+    frame.src = p.url;
+
+    slowTimer = setTimeout(() => {
+      setStatus('Está a demorar', 'Podes experimentar já o próximo player.', false);
+      nextButton.hidden = channel.players.length < 2;
+    }, 15000);
+
+    if (auto && !userInitiated && channel.players.length > 1) {
+      autoTimer = setTimeout(() => nextPlayer(), 24000);
+    }
+  }
+
+  frame.addEventListener('load', () => {
+    if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; }
+    status.hidden = true;
+  });
+
+  nextButton.addEventListener('click', nextPlayer);
+
+  fetch('./channels.json', {cache:'no-store'})
+    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then(cfg => {
+      channel = cfg && cfg.channels && cfg.channels[channelKey];
+      if (!channel || !Array.isArray(channel.players) || !channel.players.length) throw new Error('Canal sem players configurados');
+      title.textContent = channel.name || channelKey;
+      const exact = channel.players.findIndex(p => Number(p.id) === requestedPlayer);
+      currentIndex = exact >= 0 ? exact : 0;
+      loadPlayer(currentIndex, false);
+    })
+    .catch(err => {
+      setStatus('Não foi possível abrir o gateway', err && err.message ? err.message : String(err), true);
+      nextButton.hidden = true;
+    });
+})();
+</script>
+</body>
+</html>
