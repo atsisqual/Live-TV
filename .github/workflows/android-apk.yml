@@ -132,7 +132,7 @@ jobs:
             "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v${APK_VERSION}.apk",
             "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
             "signedRelease": true,
-            "notes": "DLive direto nos canais Portugal. Bloqueio adicional dos redirects de publicidade observados em dlive/dlhd, mantendo o embed do player intacto. Auto-update ativo.",
+            "notes": "Portugal volta a usar APITOTAL sem redirecionamento automático para DLive. Player 1 mantém wideiptv.top e a app tenta iniciar o áudio sem mute. Auto-update ativo.",
             "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF
