@@ -51,3 +51,5 @@ When all four secrets exist, `.github/workflows/android-apk.yml` automatically b
 Do not delete or rotate the release key after users install a release signed with it. Android only accepts an in-place update when the new APK is signed by the same signing identity.
 
 Release builds from v1.5.9 onward also include per-channel API Total player selection through the optional JSON `player` field.
+
+From v1.6.3 onward, direct `https://dlive.sx/stream/stream-*.php` channel pages are preferred when supplied and are preserved when re-importing a DLive catalogue over older API Total entries.
