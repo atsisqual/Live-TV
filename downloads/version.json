@@ -1,9 +1,9 @@
 {
-  "versionCode": 21,
-  "versionName": "1.5.4",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.4.apk",
+  "versionCode": 22,
+  "versionName": "1.5.5",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.5.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "EPG Now/Next: importa XMLTV e mostra o programa atual e o seguinte diretamente nos cartões dos canais.",
-  "publishedAt": "2026-10-17T12:13:07Z"
+  "notes": "EPG automático: guarda uma fonte XMLTV HTTPS e atualiza a grelha automaticamente, incluindo fontes gzip.",
+  "publishedAt": "2026-10-17T12:14:02Z"
 }
