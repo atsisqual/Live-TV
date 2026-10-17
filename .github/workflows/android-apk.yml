@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 env:
-  APK_VERSION: '1.5.3'
-  APK_VERSION_CODE: '20'
+  APK_VERSION: '1.5.4'
+  APK_VERSION_CODE: '21'
   SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
   SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
   SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS || secrets.ANDROID_KEY_ALIAS }}
@@ -98,8 +98,8 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Live-TV-v1.5.3
-          path: Live-TV-v1.5.3.apk
+          name: Live-TV-v1.5.4
+          path: Live-TV-v1.5.4.apk
           if-no-files-found: error
 
       - name: Publish APK and update manifest to GitHub Pages
@@ -122,7 +122,7 @@ jobs:
             "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v${APK_VERSION}.apk",
             "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
             "signedRelease": true,
-            "notes": "Importação M3U melhorada: tvg-logo, tvg-id e group-title passam a ser aproveitados automaticamente.",
+            "notes": "EPG Now/Next: importa XMLTV e mostra o programa atual e o seguinte diretamente nos cartões dos canais.",
             "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF
