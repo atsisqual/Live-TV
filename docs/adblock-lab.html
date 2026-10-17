@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live TV Adblock Lab</title>
+<style>html,body{margin:0;background:#0d0f14;color:#f7f8fa;font-family:system-ui,sans-serif}main{max-width:1100px;margin:auto;padding:16px}.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}input,select,button{background:#171c26;color:#fff;border:1px solid #343b4b;border-radius:9px;padding:10px}input{flex:1;min-width:260px}iframe{width:100%;aspect-ratio:16/9;border:1px solid #343b4b;background:#000}.log{margin-top:12px;padding:10px;background:#090b0f;border:1px solid #343b4b;border-radius:9px;white-space:pre-wrap;font:12px/1.5 monospace}.note{color:#aab4c5;font-size:12px}</style>
+</head><body><main>
+<h2>Adblock sandbox lab</h2>
+<div class="bar"><input id="url" placeholder="https://example.com/player"><select id="mode"><option value="strict">strict no-popups</option><option value="plain">plain</option></select><button id="go">Load</button><button id="reload">Reload</button></div>
+<p class="note">strict blocks popups/popunders and top-level navigation from the embedded page while preserving scripts, same-origin state, forms, presentation, downloads and pointer lock.</p>
+<iframe id="frame" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+<div id="log" class="log">idle</div>
+<script>
+const f=document.getElementById('frame'),u=document.getElementById('url'),m=document.getElementById('mode'),l=document.getElementById('log');
+const STRICT='allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock allow-downloads';
+function stamp(s){l.textContent=new Date().toLocaleTimeString()+'  '+s+'\n'+l.textContent}
+function load(){let x=u.value.trim();if(!/^https?:\/\//i.test(x)){stamp('invalid URL');return}f.src='about:blank';if(m.value==='strict')f.setAttribute('sandbox',STRICT);else f.removeAttribute('sandbox');requestAnimationFrame(()=>{f.src=x;stamp('loading '+x+' mode='+m.value)})}
+f.addEventListener('load',()=>stamp('iframe load event; sandbox='+ (f.getAttribute('sandbox')||'none')));f.addEventListener('error',()=>stamp('iframe error event'));
+document.getElementById('go').onclick=load;document.getElementById('reload').onclick=load;
+const q=new URLSearchParams(location.search);if(q.get('url')){u.value=q.get('url');m.value=q.get('mode')||'strict';load()}
+</script></main></body></html>
