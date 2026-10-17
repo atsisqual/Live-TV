@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 env:
-  APK_VERSION: '1.5.1'
-  APK_VERSION_CODE: '18'
+  APK_VERSION: '1.5.2'
+  APK_VERSION_CODE: '19'
   SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
   SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
   SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS || secrets.ANDROID_KEY_ALIAS }}
@@ -59,33 +59,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "${SIGNING_KEY_BASE64:-}" && -n "${SIGNING_STORE_PASSWORD:-}" && -n "${SIGNING_KEY_ALIAS:-}" && -n "${SIGNING_KEY_PASSWORD:-}" ]]; then
-            KEYSTORE="$RUNNER_TEMP/live-tv-release.jks"
-            printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEYSTORE"
-            test -s "$KEYSTORE"
-            echo "ANDROID_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
-            echo "ANDROID_KEYSTORE_PASSWORD=$SIGNING_STORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_ALIAS=$SIGNING_KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_PASSWORD=$SIGNING_KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "SIGNED_RELEASE=true" >> "$GITHUB_ENV"
-          else
-            echo "SIGNED_RELEASE=false" >> "$GITHUB_ENV"
-            echo "Release signing secrets not configured; building debug APK."
+          if [[ -z "${SIGNING_KEY_BASE64:-}" || -z "${SIGNING_STORE_PASSWORD:-}" || -z "${SIGNING_KEY_ALIAS:-}" || -z "${SIGNING_KEY_PASSWORD:-}" ]]; then
+            echo "::error::Permanent Android release signing secrets are required. Refusing to publish a debug-signed APK."
+            exit 1
           fi
+
+          KEYSTORE="$RUNNER_TEMP/live-tv-release.jks"
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
+          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$SIGNING_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$SIGNING_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$SIGNING_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "SIGNED_RELEASE=true" >> "$GITHUB_ENV"
 
       - name: Build APK
         working-directory: android
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${SIGNED_RELEASE}" == "true" ]]; then
-            gradle :app:assembleRelease --stacktrace
-            SOURCE="$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk"
-          else
-            gradle :app:assembleDebug --stacktrace
-            SOURCE="$GITHUB_WORKSPACE/android/app/build/outputs/apk/debug/app-debug.apk"
-          fi
-
+          gradle :app:assembleRelease --stacktrace
+          SOURCE="$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk"
           APK="$GITHUB_WORKSPACE/Live-TV-v${APK_VERSION}.apk"
           cp "$SOURCE" "$APK"
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
@@ -104,8 +98,8 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Live-TV-v1.5.1
-          path: Live-TV-v1.5.1.apk
+          name: Live-TV-v1.5.2
+          path: Live-TV-v1.5.2.apk
           if-no-files-found: error
 
       - name: Publish APK and update manifest to GitHub Pages
@@ -127,8 +121,8 @@ jobs:
             "versionName": "${APK_VERSION}",
             "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v${APK_VERSION}.apk",
             "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
-            "signedRelease": ${SIGNED_RELEASE},
-            "notes": "Atualizador integrado: download dentro da app e abertura direta do instalador Android.",
+            "signedRelease": true,
+            "notes": "Atualizador reforçado: valida pacote, versão e assinatura digital antes de abrir o instalador.",
             "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF

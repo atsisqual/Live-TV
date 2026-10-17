@@ -2,6 +2,9 @@ package com.atsisqual.livetv;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -23,7 +26,10 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.IDN;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -232,12 +238,19 @@ public class UpdateActivity extends Activity {
                     throw new IllegalStateException("O APK descarregado parece incompleto");
                 }
 
+                runOnUiThread(() -> {
+                    progress.setVisibility(View.VISIBLE);
+                    title.setText("A validar atualização…");
+                    detail.setText("A confirmar versão, pacote e assinatura digital.");
+                });
+
+                validateDownloadedApk(apk);
                 runOnUiThread(() -> installApk(apk));
             } catch (Exception e) {
                 String message = e.getMessage();
                 runOnUiThread(() -> showError("Falha ao atualizar",
                         message == null || message.trim().isEmpty()
-                                ? "Não foi possível descarregar a atualização."
+                                ? "Não foi possível descarregar ou validar a atualização."
                                 : message));
             } finally {
                 try {
@@ -247,6 +260,68 @@ public class UpdateActivity extends Activity {
                 downloadStarted = false;
             }
         });
+    }
+
+    private void validateDownloadedApk(File apk) throws Exception {
+        PackageManager packageManager = getPackageManager();
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ? PackageManager.GET_SIGNING_CERTIFICATES
+                : PackageManager.GET_SIGNATURES;
+
+        PackageInfo installed = packageManager.getPackageInfo(getPackageName(), flags);
+        PackageInfo candidate = packageManager.getPackageArchiveInfo(apk.getAbsolutePath(), flags);
+        if (candidate == null) {
+            throw new IllegalStateException("O ficheiro descarregado não é um APK Android válido");
+        }
+        if (!getPackageName().equals(candidate.packageName)) {
+            throw new IllegalStateException("O APK pertence a outra aplicação");
+        }
+
+        long installedVersion = packageVersionCode(installed);
+        long candidateVersion = packageVersionCode(candidate);
+        if (candidateVersion <= installedVersion) {
+            throw new IllegalStateException("A atualização descarregada não é mais recente");
+        }
+
+        Set<String> installedSigners = signerDigests(installed);
+        Set<String> candidateSigners = signerDigests(candidate);
+        if (installedSigners.isEmpty() || candidateSigners.isEmpty()
+                || !installedSigners.equals(candidateSigners)) {
+            throw new IllegalStateException("A assinatura digital da atualização não corresponde à Live TV instalada");
+        }
+    }
+
+    private long packageVersionCode(PackageInfo info) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return info.getLongVersionCode();
+        }
+        return info.versionCode;
+    }
+
+    private Set<String> signerDigests(PackageInfo info) throws Exception {
+        Signature[] signatures;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (info.signingInfo == null) return new HashSet<>();
+            signatures = info.signingInfo.getApkContentsSigners();
+        } else {
+            signatures = info.signatures;
+        }
+
+        Set<String> result = new HashSet<>();
+        if (signatures == null) return result;
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        for (Signature signature : signatures) {
+            byte[] bytes = digest.digest(signature.toByteArray());
+            StringBuilder hex = new StringBuilder(bytes.length * 2);
+            for (byte value : bytes) {
+                int b = value & 0xff;
+                hex.append(Character.forDigit((b >>> 4) & 0xf, 16));
+                hex.append(Character.forDigit(b & 0xf, 16));
+            }
+            result.add(hex.toString());
+            digest.reset();
+        }
+        return result;
     }
 
     private void installApk(File apk) {
@@ -263,7 +338,7 @@ public class UpdateActivity extends Activity {
             finish();
         } catch (Exception e) {
             showError("Não foi possível abrir o instalador",
-                    "O APK foi descarregado, mas o Android não conseguiu abrir o instalador.");
+                    "O APK foi descarregado e validado, mas o Android não conseguiu abrir o instalador.");
         }
     }
 
