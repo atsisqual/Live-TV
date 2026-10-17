@@ -1,9 +1,9 @@
 {
-  "versionCode": 31,
-  "versionName": "1.6.4",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.4.apk",
+  "versionCode": 32,
+  "versionName": "1.6.5",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.5.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
   "notes": "Portugal volta a usar APITOTAL sem redirecionamento automático para DLive. Player 1 mantém wideiptv.top e a app tenta iniciar o áudio sem mute. Auto-update ativo.",
-  "publishedAt": "2026-10-17T14:50:40Z"
+  "publishedAt": "2026-10-17T14:51:00Z"
 }
