@@ -132,7 +132,7 @@ jobs:
             "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v${APK_VERSION}.apk",
             "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
             "signedRelease": true,
-            "notes": "Portugal volta a usar APITOTAL sem redirecionamento automático para DLive. Player 1 mantém wideiptv.top e a app tenta iniciar o áudio sem mute. Auto-update ativo.",
+            "notes": "Corrige a ativação do Modo player direto no Android, mantendo a seleção de player por canal e o áudio automático no wideiptv.top. Auto-update ativo.",
             "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF
