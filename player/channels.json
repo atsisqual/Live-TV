@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "channels": {
+    "canal-11": {
+      "name": "Canal 11",
+      "players": [
+        {
+          "id": 1,
+          "label": "Player 1",
+          "type": "embed",
+          "url": "https://apitotal.net/0112/tv001/canal-11#livetv-player=1"
+        },
+        {
+          "id": 2,
+          "label": "Player 2",
+          "type": "embed",
+          "url": "https://apitotal.net/0112/tv001/canal-11#livetv-player=2"
+        },
+        {
+          "id": 3,
+          "label": "Player 3",
+          "type": "embed",
+          "url": "https://apitotal.net/0112/tv001/canal-11#livetv-player=3"
+        }
+      ]
+    }
+  }
+}
