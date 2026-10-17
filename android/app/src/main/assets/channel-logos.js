@@ -42,6 +42,10 @@
         localStorage.setItem(K_CUSTOM, JSON.stringify(current));
         render();
       }
+
+      // Reload the local grid after an import so the native sidebar recaptures
+      // the same self-contained channel list and caches its logos as well.
+      setTimeout(function () { window.location.reload(); }, 120);
     };
   }
 
