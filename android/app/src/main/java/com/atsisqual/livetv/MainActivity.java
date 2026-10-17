@@ -317,7 +317,6 @@ public class MainActivity extends Activity {
                 if (!request.isForMainFrame() || errorResponse == null) return;
 
                 int code = errorResponse.getStatusCode();
-                // 403/429 can be part of Cloudflare challenge/rate-limit flows that later recover.
                 if (code >= 500 || code == 404 || code == 410) {
                     mainFrameFailed = true;
                     showError("O canal não respondeu", "Erro HTTP " + code + ". Podes tentar novamente.");
@@ -464,8 +463,14 @@ public class MainActivity extends Activity {
 
     private void openUpdateUrl(String url) {
         try {
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            Intent intent = new Intent(this, UpdateActivity.class);
+            intent.putExtra(UpdateActivity.EXTRA_APK_URL, url);
+            if (pendingUpdate != null) {
+                intent.putExtra(UpdateActivity.EXTRA_VERSION,
+                        pendingUpdate.versionName.isEmpty()
+                                ? String.valueOf(pendingUpdate.versionCode)
+                                : pendingUpdate.versionName);
+            }
             startActivity(intent);
         } catch (Exception ignored) {}
     }
