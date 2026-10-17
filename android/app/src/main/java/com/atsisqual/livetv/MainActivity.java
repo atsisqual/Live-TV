@@ -75,7 +75,10 @@ public class MainActivity extends Activity {
             "connatix.com",
             "amung.us",
             "serveproxy.com",
-            "protrafficinspector.com"
+            "protrafficinspector.com",
+            "cvjqrgyifkets.online",
+            "jashxfsiqkksm.space",
+            "fensi.shop"
     );
 
     private static final Set<String> PLAYER_HOSTS = unmodifiableSet(

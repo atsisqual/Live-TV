@@ -43,7 +43,7 @@ final class AdCleaner {
             'adsco.re','adexchangerapid.com','adbpage.com','usrpubtrk.com','cdn4ads.com',
             'premiumvertising.com','xadsmart.com','profitableratecpmnetwork.com','rtmark.net',
             'asdfix.com','rbtget.com','rbtrgr.com','connatix.com','amung.us','serveproxy.com',
-            'protrafficinspector.com'
+            'protrafficinspector.com','cvjqrgyifkets.online','jashxfsiqkksm.space','fensi.shop'
           ];
 
           const ATTRS = ['href','src','action','data-href','data-url','data-link','onclick'];
