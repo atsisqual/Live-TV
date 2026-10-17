@@ -10,6 +10,7 @@ import android.os.Looper;
 import android.util.Base64;
 import android.view.View;
 import android.webkit.WebView;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -38,6 +39,11 @@ import java.util.concurrent.Executors;
  * now come exclusively from the imported channel JSON. The APK contains no channel
  * logo catalogue. Imported data logos are decoded off the UI thread and cached by
  * the existing native bitmap cache before the sidebar is refreshed.
+ *
+ * v1.6.21 adds bounded, redacted provider-chain diagnostics. It records only
+ * hostnames, resource categories and elapsed timings; no media endpoint/path/query
+ * is persisted or displayed. Long-press any sidebar channel (or the back button) to
+ * inspect the current provider chain.
  */
 public class SyncedEpgMainActivity extends EpgMainActivity {
 
@@ -53,6 +59,7 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
     private Field channelsField;
     private Field channelListField;
     private Field channelScrollField;
+    private Field sidebarBackButtonField;
     private Field logoCacheField;
     private Field channelItemUrlField;
     private Field channelItemNameField;
@@ -64,32 +71,69 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
     private boolean reflectionReady;
     private boolean externalLogoSupportInjected;
     private String externalLogoScript;
+    private ProviderDiagnostics providerDiagnostics;
 
     @Override
     protected void onLiveTvPageStarted(WebView view, String url) {
+        ensureProviderDiagnostics();
+        providerDiagnostics.onPageStarted(view, url);
+
         if (isHomeUrl(url)) {
             externalLogoSupportInjected = false;
             logoHandler.removeCallbacksAndMessages(null);
         }
         preconfirmSelection(url);
         super.onLiveTvPageStarted(view, url);
+        installDiagnosticShortcuts();
     }
 
     @Override
     protected void onLiveTvPageCommitVisible(WebView view, String url) {
+        ensureProviderDiagnostics();
+        providerDiagnostics.onPageReady(view, url);
         preconfirmSelection(url);
         super.onLiveTvPageCommitVisible(view, url);
         if (isHomeUrl(url)) injectExternalLogoSupport(view);
+        installDiagnosticShortcuts();
     }
 
     @Override
     protected void onLiveTvPageFinished(WebView view, String url) {
+        ensureProviderDiagnostics();
+        providerDiagnostics.onPageReady(view, url);
         preconfirmSelection(url);
         super.onLiveTvPageFinished(view, url);
         if (isHomeUrl(url)) {
             injectExternalLogoSupport(view);
             scheduleImportedLogoSync(view);
         }
+        installDiagnosticShortcuts();
+    }
+
+    private void ensureProviderDiagnostics() {
+        if (providerDiagnostics == null) providerDiagnostics = new ProviderDiagnostics(this);
+    }
+
+    private void installDiagnosticShortcuts() {
+        try {
+            prepareReflection();
+            View.OnLongClickListener listener = v -> {
+                ensureProviderDiagnostics();
+                providerDiagnostics.showReport();
+                return true;
+            };
+
+            Button back = (Button) sidebarBackButtonField.get(this);
+            if (back != null) back.setOnLongClickListener(listener);
+
+            LinearLayout list = (LinearLayout) channelListField.get(this);
+            if (list == null) return;
+            list.setOnLongClickListener(listener);
+            for (int i = 0; i < list.getChildCount(); i++) {
+                View row = list.getChildAt(i);
+                if (row != null) row.setOnLongClickListener(listener);
+            }
+        } catch (Exception ignored) {}
     }
 
     private boolean isHomeUrl(String url) {
@@ -206,7 +250,10 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
                 changed = true;
             }
 
-            if (changed) renderChannelListMethod.invoke(this);
+            if (changed) {
+                renderChannelListMethod.invoke(this);
+                installDiagnosticShortcuts();
+            }
         } catch (Exception ignored) {}
     }
 
@@ -227,6 +274,7 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
         channelsField = cls.getDeclaredField("channels");
         channelListField = cls.getDeclaredField("channelList");
         channelScrollField = cls.getDeclaredField("channelScroll");
+        sidebarBackButtonField = cls.getDeclaredField("sidebarBackButton");
         logoCacheField = cls.getDeclaredField("logoCache");
         matchesActiveChannelMethod = cls.getDeclaredMethod(
                 "matchesActiveChannel", String.class, String.class);
@@ -236,6 +284,7 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
         channelsField.setAccessible(true);
         channelListField.setAccessible(true);
         channelScrollField.setAccessible(true);
+        sidebarBackButtonField.setAccessible(true);
         logoCacheField.setAccessible(true);
         matchesActiveChannelMethod.setAccessible(true);
         renderChannelListMethod.setAccessible(true);
@@ -381,6 +430,7 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
     protected void onDestroy() {
         logoHandler.removeCallbacksAndMessages(null);
         logoPreloader.shutdownNow();
+        if (providerDiagnostics != null) providerDiagnostics.destroy();
         super.onDestroy();
     }
 }
