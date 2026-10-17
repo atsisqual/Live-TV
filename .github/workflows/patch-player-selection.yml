@@ -29,91 +29,58 @@ jobs:
               p.write_text(s.replace(old, new, 1), encoding='utf-8')
 
           index = 'android/app/src/main/assets/index.html'
-          replace_once(
-              index,
+          replace_once(index,
               "function text(v){return String(v==null?'':v).trim()}function esc(v)",
-              "function text(v){return String(v==null?'':v).trim()}function playerNumber(v){const n=parseInt(v,10);return Number.isFinite(n)&&n>=1&&n<=20?n:0}function esc(v)"
-          )
-          replace_once(
-              index,
+              "function text(v){return String(v==null?'':v).trim()}function playerNumber(v){const n=parseInt(v,10);return Number.isFinite(n)&&n>=1&&n<=20?n:0}function esc(v)")
+          replace_once(index,
               "epg_id:text(x.epg_id||x.epgId||x.tvg_id||x['tvg-id']),category:text(x.category||x.group||x.group_title||x.groupTitle||x['group-title'])",
-              "epg_id:text(x.epg_id||x.epgId||x.tvg_id||x['tvg-id']),player:playerNumber(x.player||x.player_index||x.playerIndex),category:text(x.category||x.group||x.group_title||x.groupTitle||x['group-title'])"
-          )
-          replace_once(
-              index,
+              "epg_id:text(x.epg_id||x.epgId||x.tvg_id||x['tvg-id']),player:playerNumber(x.player||x.player_index||x.playerIndex),category:text(x.category||x.group||x.group_title||x.groupTitle||x['group-title'])")
+          replace_once(index,
               "function rememberRecent(item){let a=loadRecent().filter(k=>k!==itemKey(item));a.unshift(itemKey(item));localStorage.setItem(K_RECENT,JSON.stringify(a.slice(0,8)))}function openChannel(item){if(!ok(item.url)){openEdit(item);return}rememberRecent(item);sessionStorage.setItem(K_SCROLL,String(window.scrollY||0));window.location.href=item.url}",
-              "function rememberRecent(item){let a=loadRecent().filter(k=>k!==itemKey(item));a.unshift(itemKey(item));localStorage.setItem(K_RECENT,JSON.stringify(a.slice(0,8)))}function playerUrl(item){if(!ok(item.url))return item.url;const p=playerNumber(item.player);if(!p||!isApiTotal(item.url))return item.url;try{const u=new URL(item.url);u.hash='livetv-player='+p;return u.href}catch(e){return item.url}}function openChannel(item){if(!ok(item.url)){openEdit(item);return}rememberRecent(item);sessionStorage.setItem(K_SCROLL,String(window.scrollY||0));window.location.href=playerUrl(item)}"
-          )
-          replace_once(
-              index,
+              "function rememberRecent(item){let a=loadRecent().filter(k=>k!==itemKey(item));a.unshift(itemKey(item));localStorage.setItem(K_RECENT,JSON.stringify(a.slice(0,8)))}function playerUrl(item){if(!ok(item.url))return item.url;const p=playerNumber(item.player);if(!p||!isApiTotal(item.url))return item.url;try{const u=new URL(item.url);u.hash='livetv-player='+p;return u.href}catch(e){return item.url}}function openChannel(item){if(!ok(item.url)){openEdit(item);return}rememberRecent(item);sessionStorage.setItem(K_SCROLL,String(window.scrollY||0));window.location.href=playerUrl(item)}")
+          replace_once(index,
               "category:(x.category&&x.category!=='Outros')?x.category:a[idx].category});",
-              "category:(x.category&&x.category!=='Outros')?x.category:a[idx].category,player:x.player||a[idx].player});"
-          )
-          replace_once(
-              index,
+              "category:(x.category&&x.category!=='Outros')?x.category:a[idx].category,player:x.player||a[idx].player});")
+          replace_once(index,
               "epg_id:x.epg_id||undefined,category:x.category||undefined,logo:x.logo||undefined",
-              "epg_id:x.epg_id||undefined,player:x.player||undefined,category:x.category||undefined,logo:x.logo||undefined"
-          )
-          replace_once(
-              index,
+              "epg_id:x.epg_id||undefined,player:x.player||undefined,category:x.category||undefined,logo:x.logo||undefined")
+          replace_once(index,
               "Suporta M3U, <b>Nome | URL</b>, array JSON ou objeto com <b>channels[]</b>. Em M3U, <b>tvg-logo</b>, <b>tvg-id</b> e <b>group-title</b> são importados automaticamente.",
-              "Suporta M3U, <b>Nome | URL</b>, array JSON ou objeto com <b>channels[]</b>. No JSON podes usar <b>player</b> (1–20) para escolher a alternativa API Total. Em M3U, <b>tvg-logo</b>, <b>tvg-id</b> e <b>group-title</b> são importados automaticamente."
-          )
+              "Suporta M3U, <b>Nome | URL</b>, array JSON ou objeto com <b>channels[]</b>. No JSON podes usar <b>player</b> (1–20) para escolher a alternativa API Total. Em M3U, <b>tvg-logo</b>, <b>tvg-id</b> e <b>group-title</b> são importados automaticamente.")
 
           cleaner = 'android/app/src/main/java/com/atsisqual/livetv/AdCleaner.java'
-          replace_once(
-              cleaner,
+          replace_once(cleaner,
               "          const ATTRS = ['href','src','action','data-href','data-url','data-link','onclick'];\n",
-              "          const ATTRS = ['href','src','action','data-href','data-url','data-link','onclick'];\n\n          const REQUESTED_PLAYER = (() => {\n            try {\n              const m = String(location.hash || '').match(/(?:^#|[&#])livetv-player=(\\d{1,2})(?:&|$)/i);\n              const n = m ? parseInt(m[1], 10) : 1;\n              return Number.isFinite(n) && n >= 1 && n <= 20 ? n : 1;\n            } catch (_) { return 1; }\n          })();\n          let playerSelectionDone = REQUESTED_PLAYER <= 1;\n          let playerSelectionBusy = false;\n"
-          )
+              "          const ATTRS = ['href','src','action','data-href','data-url','data-link','onclick'];\n\n          const REQUESTED_PLAYER = (() => {\n            try {\n              const m = String(location.hash || '').match(/(?:^#|[&#])livetv-player=(\\d{1,2})(?:&|$)/i);\n              const n = m ? parseInt(m[1], 10) : 1;\n              return Number.isFinite(n) && n >= 1 && n <= 20 ? n : 1;\n            } catch (_) { return 1; }\n          })();\n          let playerSelectionDone = REQUESTED_PLAYER <= 1;\n          let playerSelectionBusy = false;\n")
 
           marker = "          /*\n           * API Total already loads Player 1 by default. Do not click, replace, or\n           * navigate to the first iframe: some players need the wrapper/referrer/cookie\n           * context. We only hide the player chooser so the user never sees Players 2+.\n           */\n          const hidePlayerChooser = root => {\n"
           replacement = "          const selectRequestedPlayer = () => {\n            if (window.top !== window) return false;\n            if (!location.hostname.endsWith('apitotal.net')) return false;\n            if (REQUESTED_PLAYER <= 1 || playerSelectionDone || playerSelectionBusy) return playerSelectionDone;\n\n            let chooser = null;\n            try {\n              chooser = [...document.querySelectorAll('.v-select,.v-input,[role=\\\"combobox\\\"]')].find(el => {\n                const t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();\n                return t.includes('PLAYER') && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'));\n              }) || null;\n            } catch (_) {}\n            if (!chooser) return false;\n\n            const wanted = 'PLAYER ' + REQUESTED_PLAYER;\n            try {\n              const current = (chooser.innerText || chooser.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();\n              if (current.includes(wanted)) {\n                playerSelectionDone = true;\n                return true;\n              }\n            } catch (_) {}\n\n            playerSelectionBusy = true;\n            try {\n              const control = chooser.querySelector('[role=\\\"combobox\\\"],input,.v-field') || chooser;\n              try { control.dispatchEvent(new MouseEvent('mousedown', {bubbles:true,cancelable:true,view:window})); } catch (_) {}\n              try { control.click(); } catch (_) {}\n            } catch (_) {}\n\n            setTimeout(() => {\n              try {\n                const options = [...document.querySelectorAll('[role=\\\"option\\\"],.v-list-item,.v-list-item-title')];\n                const option = options.find(el => {\n                  const t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();\n                  return t === wanted;\n                });\n                if (option) {\n                  const target = option.closest('[role=\\\"option\\\"],.v-list-item') || option;\n                  target.click();\n                  playerSelectionDone = true;\n                }\n              } catch (_) {}\n              playerSelectionBusy = false;\n              if (playerSelectionDone) setTimeout(() => hidePlayerChooser(document), 60);\n            }, 140);\n            return false;\n          };\n\n          /*\n           * API Total loads Player 1 by default. A channel may request another numbered\n           * player through #livetv-player=N; selection happens inside the API Total\n           * wrapper so referrer/cookie context is preserved. Only then is the chooser hidden.\n           */\n          const hidePlayerChooser = root => {\n"
           replace_once(cleaner, marker, replacement)
-          replace_once(
-              cleaner,
+          replace_once(cleaner,
               "            if (!location.hostname.endsWith('apitotal.net')) return;\n\n            const scope",
-              "            if (!location.hostname.endsWith('apitotal.net')) return;\n            if (REQUESTED_PLAYER > 1 && !playerSelectionDone) return;\n\n            const scope"
-          )
-          replace_once(
-              cleaner,
+              "            if (!location.hostname.endsWith('apitotal.net')) return;\n            if (REQUESTED_PLAYER > 1 && !playerSelectionDone) return;\n\n            const scope")
+          replace_once(cleaner,
               "                if (t.includes('PLAYER 1') && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'))) {",
-              "                if (/PLAYER\\s+\\d+/.test(t) && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'))) {"
-          )
-          replace_once(
-              cleaner,
+              "                if (/PLAYER\\s+\\d+/.test(t) && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'))) {")
+          replace_once(cleaner,
               "            cleanElement(document.documentElement);\n            hidePlayerChooser(document.documentElement);\n            maybePromoteRdembed(document.documentElement);",
-              "            cleanElement(document.documentElement);\n            selectRequestedPlayer();\n            hidePlayerChooser(document.documentElement);\n            maybePromoteRdembed(document.documentElement);"
-          )
-          replace_once(
-              cleaner,
+              "            cleanElement(document.documentElement);\n            selectRequestedPlayer();\n            hidePlayerChooser(document.documentElement);\n            maybePromoteRdembed(document.documentElement);")
+          replace_once(cleaner,
               "                  cleanElement(mutation.target);\n                  hidePlayerChooser(mutation.target);",
-              "                  cleanElement(mutation.target);\n                  selectRequestedPlayer();\n                  hidePlayerChooser(mutation.target);"
-          )
-          replace_once(
-              cleaner,
+              "                  cleanElement(mutation.target);\n                  selectRequestedPlayer();\n                  hidePlayerChooser(mutation.target);")
+          replace_once(cleaner,
               "                  cleanElement(node);\n                  hidePlayerChooser(node);",
-              "                  cleanElement(node);\n                  selectRequestedPlayer();\n                  hidePlayerChooser(node);"
-          )
+              "                  cleanElement(node);\n                  selectRequestedPlayer();\n                  hidePlayerChooser(node);")
 
-          gradle = 'android/app/build.gradle'
-          replace_once(gradle, "versionCode 25\n        versionName '1.5.8'", "versionCode 26\n        versionName '1.5.9'")
+          replace_once('android/app/build.gradle',
+              "versionCode 25\n        versionName '1.5.8'",
+              "versionCode 26\n        versionName '1.5.9'")
 
-          workflow = '.github/workflows/android-apk.yml'
-          replace_once(workflow, "APK_VERSION: '1.5.8'\n  APK_VERSION_CODE: '25'", "APK_VERSION: '1.5.9'\n  APK_VERSION_CODE: '26'")
-          replace_once(workflow, "name: Live-TV-v1.5.8\n          path: Live-TV-v1.5.8.apk", "name: Live-TV-v1.5.9\n          path: Live-TV-v1.5.9.apk")
-          replace_once(
-              workflow,
-              '"notes": "Menu lateral mais compacto, seleção do canal corrigida e novo Modo player direto: arranque no último canal sem Voltar aos canais. O update checker continua ativo também neste modo."',
-              '"notes": "Suporte a player por canal no JSON (player: N): a app seleciona a alternativa API Total pedida antes de ocultar o seletor. O update checker continua ativo."'
-          )
-
-          catalog = 'data/piratetv-onl-portugal-catalog.md'
-          p = Path(catalog)
-          s = p.read_text(encoding='utf-8')
+          catalog = Path('data/piratetv-onl-portugal-catalog.md')
+          s = catalog.read_text(encoding='utf-8')
           note = "\n## Live TV JSON player selection\n\nThe app supports an optional 1-based `player` field for API Total channel entries. Example: `\"player\": 3` selects API Total Player 3 inside the wrapper before the chooser is hidden. If omitted, Player 1 remains the default. This field selects only the public player/embed alternative already exposed by API Total; it does not contain direct media manifests or tokens.\n"
           if '## Live TV JSON player selection' not in s:
-              p.write_text(s.rstrip() + '\n' + note, encoding='utf-8')
+              catalog.write_text(s.rstrip() + '\n' + note, encoding='utf-8')
           PY
 
       - name: Commit patch
@@ -122,7 +89,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add android/app/src/main/assets/index.html android/app/src/main/java/com/atsisqual/livetv/AdCleaner.java android/app/build.gradle .github/workflows/android-apk.yml data/piratetv-onl-portugal-catalog.md
+          git add android/app/src/main/assets/index.html android/app/src/main/java/com/atsisqual/livetv/AdCleaner.java android/app/build.gradle data/piratetv-onl-portugal-catalog.md
           git diff --cached --check
           git commit -m "Support per-channel API Total player selection"
           git push
