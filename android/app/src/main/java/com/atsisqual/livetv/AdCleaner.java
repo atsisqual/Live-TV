@@ -188,6 +188,31 @@ final class AdCleaner {
             } catch (_) {}
           };
 
+          const hideWideIptvLiveBadge = root => {
+            if (!IS_WIDEIPTV) return;
+            const scope = root && root.querySelectorAll ? root : document;
+            const maybeHide = el => {
+              try {
+                if (!el || el.nodeType !== 1 || isMediaContainer(el)) return;
+                const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
+                if (text !== 'LIVE' && text !== '● LIVE' && text !== 'LIVE ●') return;
+                const cs = getComputedStyle(el);
+                const r = el.getBoundingClientRect();
+                const vw = Math.max(document.documentElement.clientWidth || 0, innerWidth || 0);
+                const vh = Math.max(document.documentElement.clientHeight || 0, innerHeight || 0);
+                if (!vw || !vh || r.width <= 0 || r.height <= 0 || r.width > 180 || r.height > 90) return;
+                if (r.left > Math.max(180, vw * 0.30) || r.top > Math.max(110, vh * 0.20)) return;
+                const zi = parseInt(cs.zIndex, 10);
+                const overlay = cs.position === 'fixed' || cs.position === 'absolute' || (Number.isFinite(zi) && zi > 0);
+                if (overlay) disable(el);
+              } catch (_) {}
+            };
+            try {
+              if (scope.nodeType === 1) maybeHide(scope);
+              scope.querySelectorAll('div,span,p,label,b,strong').forEach(maybeHide);
+            } catch (_) {}
+          };
+
           const selectRequestedPlayer = () => {
             if (window.top !== window) return false;
             if (!location.hostname.endsWith('apitotal.net')) return false;
@@ -333,6 +358,7 @@ final class AdCleaner {
             cleanElement(document.documentElement);
             cleanDlive(document);
             forceSound(document.documentElement);
+            hideWideIptvLiveBadge(document.documentElement);
             selectRequestedPlayer();
             hidePlayerChooser(document.documentElement);
             maybePromoteRdembed(document.documentElement);
@@ -342,6 +368,7 @@ final class AdCleaner {
                   cleanElement(mutation.target);
                   cleanDlive(mutation.target);
                   forceSound(mutation.target);
+                  hideWideIptvLiveBadge(mutation.target);
                   selectRequestedPlayer();
                   hidePlayerChooser(mutation.target);
                   if (mutation.attributeName === 'src') maybePromoteRdembed(mutation.target);
@@ -350,6 +377,7 @@ final class AdCleaner {
                   cleanElement(node);
                   cleanDlive(node);
                   forceSound(node);
+                  hideWideIptvLiveBadge(node);
                   selectRequestedPlayer();
                   hidePlayerChooser(node);
                   maybePromoteRdembed(node);
@@ -364,6 +392,7 @@ final class AdCleaner {
               let soundAttempts = 0;
               const soundTimer = setInterval(() => {
                 forceSound(document);
+                hideWideIptvLiveBadge(document);
                 soundAttempts++;
                 if (soundAttempts >= 20) clearInterval(soundTimer);
               }, 500);

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#090b0f">
-<title>Live TV</title>
+<title>TV do Zé</title>
 <style>
 :root{color-scheme:dark;--bg:#090b0f;--surface:#11151b;--surface2:#171c24;--text:#f7f8fa;--muted:#8d96a5;--line:#242b36;--accent:#ff304f;--accent2:#ff6a3d;--shadow:0 18px 50px rgba(0,0,0,.28)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;width:100%;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}body{overflow-x:hidden;overscroll-behavior-y:none}button,input,textarea{font:inherit}button{cursor:pointer}
@@ -24,7 +24,7 @@
 </head>
 <body>
 <div id="app">
-  <div class="topbar"><div class="brand"><div class="brandmark">TV</div><div class="brandtext"><div class="brandtitle">Live TV</div><div class="brandsub" id="summary">A carregar canais…</div></div></div><button class="iconbtn" id="menuBtn" aria-label="Menu">⋮</button></div>
+  <div class="topbar"><div class="brand"><div class="brandmark">TV</div><div class="brandtext"><div class="brandtitle">TV do Zé</div><div class="brandsub" id="summary">A carregar canais…</div></div></div><button class="iconbtn" id="menuBtn" aria-label="Menu">⋮</button></div>
   <main class="content">
     <div class="search" id="searchBox"><span>⌕</span><input id="search" type="search" autocomplete="off" placeholder="Procurar canal…"><button class="clear" id="clearSearch" aria-label="Limpar pesquisa">×</button></div>
     <div class="chips" id="chips"></div>
@@ -39,6 +39,7 @@
     <button data-menu="backup">▣ Backup completo</button>
     <button data-menu="restore">↺ Restaurar backup</button>
     <button data-menu="favorites">★ Mostrar favoritos</button>
+    <button data-menu="autoupdate" id="autoUpdateMenu">✓ Procurar atualizações automaticamente</button>
     <button class="danger" data-menu="clear">Apagar canais importados</button>
   </div>
   <div class="overlay" id="overlay"><div class="sheet" id="sheet"><div class="handle"></div><div class="sheethead"><div class="sheettitle" id="sheetTitle"></div><button class="closebtn" id="sheetClose">×</button></div><div id="sheetBody"></div></div></div>
@@ -97,8 +98,11 @@ function openOptions(item){const f=loadFav(),fav=f.has(itemKey(item)),n=loadCust
 function optionFavorite(encoded){const k=decodeURIComponent(encoded),item=allItems().find(x=>itemKey(x)===k);if(item){toggleFav(item);closeSheet()}}function optionEdit(i){const item=allItems().find(x=>x.customIndex===i);if(item)openEdit(item)}
 function confirmRemove(i){const a=loadCustom(),x=a[i];if(!x)return;openSheet('Remover canal',`<div class="form"><div class="hint" style="font-size:14px;color:#c7ced8">Remover <b>${esc(x.name)}</b> da tua lista?</div><div class="actions"><button class="action" onclick="closeSheet()">Cancelar</button><button class="action red" onclick="removeCustom(${i})">Remover</button></div></div>`)}function removeCustom(i){let a=loadCustom();if(!a[i])return;a.splice(i,1);saveCustom(a);closeSheet();showToast('Canal removido')}
 function confirmClear(){const n=loadCustom().length;if(!n){showToast('Não há canais importados');return}openSheet('Apagar canais importados',`<div class="form"><div class="hint" style="font-size:14px;color:#c7ced8">Isto vai remover <b>${n}</b> canal${n===1?'':'is'}.</div><div class="actions"><button class="action" onclick="closeSheet()">Cancelar</button><button class="action red" onclick="clearCustom()">Apagar</button></div></div>`)}function clearCustom(){localStorage.setItem(K_CUSTOM,'[]');render();closeSheet();showToast('Canais importados apagados')}
-$('menuBtn').onclick=e=>{e.stopPropagation();toggleMenu()};$('sheetClose').onclick=closeSheet;$('overlay').onclick=e=>{if(e.target===$('overlay'))closeSheet()};$('emptyImport').onclick=openImport;document.addEventListener('click',e=>{if(!$('menu').contains(e.target)&&e.target!==$('menuBtn'))toggleMenu(false)});
-$('menu').addEventListener('click',e=>{const b=e.target.closest('button[data-menu]');if(!b)return;const a=b.dataset.menu;if(a==='add')openAdd();if(a==='sort')openSort();if(a==='import')openImport();if(a==='export'){toggleMenu(false);exportList()}if(a==='backup'){toggleMenu(false);backupFull()}if(a==='restore')openRestore();if(a==='favorites'){activeFilter='favorites';toggleMenu(false);render()}if(a==='clear')confirmClear()});
+function readAutoUpdate(){try{return !window.LiveTvSettings||!!window.LiveTvSettings.isAutoUpdateEnabled()}catch(e){return true}}
+function refreshAutoUpdateMenu(){const b=$('autoUpdateMenu');if(!b)return;const on=readAutoUpdate();b.textContent=(on?'✓ ':'○ ')+'Procurar atualizações automaticamente'}
+function toggleAutoUpdate(){try{if(!window.LiveTvSettings||typeof window.LiveTvSettings.setAutoUpdateEnabled!=='function'){showToast('Definição indisponível');return}const next=!readAutoUpdate();window.LiveTvSettings.setAutoUpdateEnabled(next);const b=$('autoUpdateMenu');if(b)b.textContent=(next?'✓ ':'○ ')+'Procurar atualizações automaticamente';toggleMenu(false);showToast(next?'Atualizações automáticas ativadas':'Atualizações automáticas desativadas')}catch(e){showToast('Não foi possível alterar a definição')} }
+$('menuBtn').onclick=e=>{e.stopPropagation();refreshAutoUpdateMenu();toggleMenu()};$('sheetClose').onclick=closeSheet;$('overlay').onclick=e=>{if(e.target===$('overlay'))closeSheet()};$('emptyImport').onclick=openImport;document.addEventListener('click',e=>{if(!$('menu').contains(e.target)&&e.target!==$('menuBtn'))toggleMenu(false)});
+$('menu').addEventListener('click',e=>{const b=e.target.closest('button[data-menu]');if(!b)return;const a=b.dataset.menu;if(a==='add')openAdd();if(a==='sort')openSort();if(a==='import')openImport();if(a==='export'){toggleMenu(false);exportList()}if(a==='backup'){toggleMenu(false);backupFull()}if(a==='restore')openRestore();if(a==='favorites'){activeFilter='favorites';toggleMenu(false);render()}if(a==='autoupdate')toggleAutoUpdate();if(a==='clear')confirmClear()});
 $('search').addEventListener('input',e=>{query=e.target.value;$('searchBox').classList.toggle('hastext',!!query);render()});$('clearSearch').onclick=()=>{$('search').value='';query='';$('searchBox').classList.remove('hastext');render();$('search').focus()};render();
 </script>
 </body>

@@ -17,6 +17,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -52,6 +53,8 @@ public class MainActivity extends Activity {
     private static final String HOME_URL = "file:///android_asset/index.html";
     private static final String UPDATE_MANIFEST =
             "https://atsisqual.github.io/Live-TV/downloads/version.json";
+    private static final String PREFS = "live-tv-settings";
+    private static final String PREF_AUTO_UPDATE = "auto-update-enabled";
 
     private static final Set<String> BLOCKED_HOSTS = unmodifiableSet(
             "histats.com",
@@ -135,7 +138,7 @@ public class MainActivity extends Activity {
         configureSystemBars();
         configureWebView();
         web.loadUrl(HOME_URL);
-        checkForUpdates();
+        if (isAutoUpdateEnabled()) checkForUpdates();
     }
 
     private void buildStatusOverlay() {
@@ -269,6 +272,7 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
 
         AdCleaner.install(web);
+        web.addJavascriptInterface(new AppSettingsBridge(), "LiveTvSettings");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -470,6 +474,7 @@ public class MainActivity extends Activity {
     }
 
     private void checkForUpdates() {
+        if (!isAutoUpdateEnabled()) return;
         background.execute(() -> {
             HttpURLConnection connection = null;
             try {
@@ -498,6 +503,7 @@ public class MainActivity extends Activity {
 
                 if (versionCode <= BuildConfig.VERSION_CODE || !isTrustedUpdateUrl(apkUrl)) return;
 
+                if (!isAutoUpdateEnabled()) return;
                 pendingUpdate = new UpdateInfo(versionCode, versionName, apkUrl, notes);
                 mainHandler.post(this::maybeShowPendingUpdate);
             } catch (Exception ignored) {
@@ -506,6 +512,39 @@ public class MainActivity extends Activity {
                 if (connection != null) connection.disconnect();
             }
         });
+    }
+
+    protected boolean isAutoUpdateEnabled() {
+        return getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean(PREF_AUTO_UPDATE, true);
+    }
+
+    private void setAutoUpdateEnabled(boolean enabled) {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean(PREF_AUTO_UPDATE, enabled)
+                .apply();
+        if (!enabled) {
+            pendingUpdate = null;
+            updateDialogShown = false;
+            return;
+        }
+        updateDialogShown = false;
+        checkForUpdates();
+    }
+
+    private final class AppSettingsBridge {
+        @JavascriptInterface
+        public boolean isAutoUpdateEnabled() {
+            return MainActivity.this.isAutoUpdateEnabled();
+        }
+
+        @JavascriptInterface
+        public void setAutoUpdateEnabled(boolean enabled) {
+            mainHandler.post(() -> {
+                if (web == null || !isLocalHome(web.getUrl())) return;
+                MainActivity.this.setAutoUpdateEnabled(enabled);
+            });
+        }
     }
 
     private boolean isTrustedUpdateUrl(String value) {
@@ -521,6 +560,7 @@ public class MainActivity extends Activity {
     }
 
     private void maybeShowPendingUpdate() {
+        if (!isAutoUpdateEnabled()) return;
         if (pendingUpdate == null || updateDialogShown || isFinishing()) return;
         if (!isLocalHome(web.getUrl())) return;
 

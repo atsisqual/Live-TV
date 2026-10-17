@@ -159,7 +159,7 @@ public class EpgMainActivity extends MainActivity {
         directLaunchPending = directPlayerMode;
         handler.postDelayed(injector, 120);
         handler.postDelayed(sidebarWatcher, 180);
-        if (directPlayerMode) handler.postDelayed(this::checkDirectModeUpdate, 1400);
+        if (directPlayerMode && isAutoUpdateEnabled()) handler.postDelayed(this::checkDirectModeUpdate, 1400);
         if (directLaunchPending) handler.postDelayed(this::launchDirectPlayerFallback, 1100);
     }
 
@@ -598,7 +598,7 @@ public class EpgMainActivity extends MainActivity {
         if (statusHomeButton != null) statusHomeButton.setVisibility(View.GONE);
         if (legacyBackButton != null) legacyBackButton.setVisibility(View.GONE);
         if (webView != null) webView.loadUrl(url);
-        handler.postDelayed(this::checkDirectModeUpdate, 1400);
+        if (isAutoUpdateEnabled()) handler.postDelayed(this::checkDirectModeUpdate, 1400);
     }
 
     private boolean isValidChannelUrl(String value) {
@@ -675,6 +675,7 @@ public class EpgMainActivity extends MainActivity {
     }
 
     private void checkDirectModeUpdate() {
+        if (!isAutoUpdateEnabled()) return;
         if (!directPlayerMode || directUpdateDialogShown || isFinishing()) return;
 
         epgBackground.execute(() -> {
@@ -715,6 +716,7 @@ public class EpgMainActivity extends MainActivity {
     }
 
     private void showDirectModeUpdate(int versionCode, String versionName, String apkUrl, String notes) {
+        if (!isAutoUpdateEnabled()) return;
         if (!directPlayerMode || directUpdateDialogShown || isFinishing()) return;
         directUpdateDialogShown = true;
 
