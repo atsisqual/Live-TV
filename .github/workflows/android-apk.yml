@@ -60,6 +60,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Live-TV-v1.3.7-behavioural-adblock
+          name: Live-TV-v1.3.8-top-level-player
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
