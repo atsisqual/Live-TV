@@ -1,5 +1,7 @@
 package com.atsisqual.livetv;
 
+import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -25,6 +27,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.IDN;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -37,8 +40,13 @@ import java.util.zip.GZIPInputStream;
 public class EpgMainActivity extends MainActivity {
 
     private static final String HOME_URL = "file:///android_asset/index.html";
+    private static final String UPDATE_MANIFEST =
+            "https://atsisqual.github.io/Live-TV/downloads/version.json";
+    private static final String PREFS = "live-tv-settings";
+    private static final String PREF_DIRECT_MODE = "direct-player-mode";
+    private static final String PREF_LAST_CHANNEL = "last-channel-url";
     private static final int MAX_XMLTV_BYTES = 12 * 1024 * 1024;
-    private static final int SIDEBAR_WIDTH_DP = 224;
+    private static final int SIDEBAR_WIDTH_DP = 184;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService epgBackground = Executors.newSingleThreadExecutor();
@@ -48,6 +56,7 @@ public class EpgMainActivity extends MainActivity {
     private FrameLayout playerRoot;
     private View statusOverlay;
     private Button legacyBackButton;
+    private Button statusHomeButton;
 
     private LinearLayout sidebar;
     private LinearLayout channelList;
@@ -56,12 +65,16 @@ public class EpgMainActivity extends MainActivity {
 
     private String epgScript;
     private String epgUrlScript;
+    private String directModeScript;
     private boolean bridgeInstalled;
     private boolean sidebarBuilt;
     private boolean sidebarShowing;
     private boolean channelCaptureRunning;
+    private boolean directPlayerMode;
+    private boolean directLaunchPending;
+    private boolean directUpdateDialogShown;
     private long lastChannelCaptureAt;
-    private String lastActiveChannel = "";
+    private String selectedChannelUrl = "";
 
     private final Runnable injector = new Runnable() {
         @Override
@@ -77,10 +90,11 @@ public class EpgMainActivity extends MainActivity {
                     if (isHome(url)) {
                         webView.evaluateJavascript(loadEpgScript(), null);
                         webView.evaluateJavascript(loadEpgUrlScript(), null);
+                        webView.evaluateJavascript(loadDirectModeScript(), null);
                     }
                 }
             } catch (Exception ignored) {
-                // EPG enhancement must never interfere with channel playback.
+                // Optional enhancements must never interfere with channel playback.
             } finally {
                 handler.postDelayed(this, 1200);
             }
@@ -95,8 +109,12 @@ public class EpgMainActivity extends MainActivity {
                 if (webView != null) {
                     ensureSidebar();
 
-                    if (legacyBackButton != null) {
-                        legacyBackButton.setVisibility(View.GONE);
+                    if (legacyBackButton != null) legacyBackButton.setVisibility(View.GONE);
+                    if (sidebarBackButton != null) {
+                        sidebarBackButton.setVisibility(directPlayerMode ? View.GONE : View.VISIBLE);
+                    }
+                    if (statusHomeButton != null && directPlayerMode) {
+                        statusHomeButton.setVisibility(View.GONE);
                     }
 
                     boolean fullscreen = webView.getVisibility() != View.VISIBLE;
@@ -122,8 +140,27 @@ public class EpgMainActivity extends MainActivity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        handler.postDelayed(injector, 700);
-        handler.postDelayed(sidebarWatcher, 300);
+
+        directPlayerMode = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean(PREF_DIRECT_MODE, false);
+        selectedChannelUrl = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString(PREF_LAST_CHANNEL, "");
+        if (selectedChannelUrl == null) selectedChannelUrl = "";
+
+        if (directPlayerMode && !isValidChannelUrl(selectedChannelUrl)) {
+            directPlayerMode = false;
+            selectedChannelUrl = "";
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putBoolean(PREF_DIRECT_MODE, false)
+                    .remove(PREF_LAST_CHANNEL)
+                    .apply();
+        }
+
+        directLaunchPending = directPlayerMode;
+        handler.postDelayed(injector, 120);
+        handler.postDelayed(sidebarWatcher, 180);
+        if (directPlayerMode) handler.postDelayed(this::checkDirectModeUpdate, 1400);
+        if (directLaunchPending) handler.postDelayed(this::launchDirectPlayerFallback, 1100);
     }
 
     private void ensureWebView() {
@@ -148,6 +185,20 @@ public class EpgMainActivity extends MainActivity {
         return null;
     }
 
+    private Button findButtonByText(View view, String text) {
+        if (view instanceof Button) {
+            CharSequence label = ((Button) view).getText();
+            if (label != null && label.toString().contains(text)) return (Button) view;
+        }
+        if (!(view instanceof ViewGroup)) return null;
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            Button found = findButtonByText(group.getChildAt(i), text);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
     private void ensureSidebar() {
         if (sidebarBuilt || playerRoot == null) return;
 
@@ -155,20 +206,21 @@ public class EpgMainActivity extends MainActivity {
 
         sidebar = new LinearLayout(this);
         sidebar.setOrientation(LinearLayout.VERTICAL);
-        sidebar.setPadding(dp(8), dp(8), dp(8), dp(8));
+        sidebar.setPadding(dp(7), dp(7), dp(7), dp(7));
         sidebar.setBackgroundColor(Color.rgb(12, 15, 20));
         sidebar.setVisibility(View.GONE);
 
         sidebarBackButton = new Button(this);
         sidebarBackButton.setText("← Voltar");
         sidebarBackButton.setAllCaps(false);
-        sidebarBackButton.setTextSize(16);
+        sidebarBackButton.setTextSize(14);
         sidebarBackButton.setTextColor(Color.WHITE);
         sidebarBackButton.setTypeface(sidebarBackButton.getTypeface(), android.graphics.Typeface.BOLD);
         sidebarBackButton.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        sidebarBackButton.setPadding(dp(14), 0, dp(12), 0);
+        sidebarBackButton.setPadding(dp(11), 0, dp(9), 0);
         sidebarBackButton.setBackground(roundedBackground(Color.rgb(29, 35, 45), Color.rgb(56, 66, 82)));
         sidebarBackButton.setOnClickListener(v -> returnToChannelGrid());
+        sidebarBackButton.setVisibility(directPlayerMode ? View.GONE : View.VISIBLE);
 
         streamChannelListSetup();
 
@@ -186,7 +238,7 @@ public class EpgMainActivity extends MainActivity {
     private void streamChannelListSetup() {
         LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(52)
+                dp(46)
         );
         sidebar.addView(sidebarBackButton, backParams);
 
@@ -197,7 +249,7 @@ public class EpgMainActivity extends MainActivity {
 
         channelList = new LinearLayout(this);
         channelList.setOrientation(LinearLayout.VERTICAL);
-        channelList.setPadding(0, dp(8), 0, dp(4));
+        channelList.setPadding(0, dp(7), 0, dp(4));
 
         channelScroll.addView(
                 channelList,
@@ -236,9 +288,17 @@ public class EpgMainActivity extends MainActivity {
                 statusOverlay = child;
             }
         }
+
+        if (statusHomeButton == null) {
+            statusHomeButton = findButtonByText(playerRoot, "Voltar aos canais");
+            if (statusHomeButton != null && directPlayerMode) {
+                statusHomeButton.setVisibility(View.GONE);
+            }
+        }
     }
 
     private void returnToChannelGrid() {
+        if (directPlayerMode) return;
         if (legacyBackButton != null) {
             legacyBackButton.performClick();
             return;
@@ -250,6 +310,9 @@ public class EpgMainActivity extends MainActivity {
         if (!sidebarBuilt || sidebar == null || webView == null) return;
 
         applyPlayerRightMargin(dp(SIDEBAR_WIDTH_DP));
+        if (sidebarBackButton != null) {
+            sidebarBackButton.setVisibility(directPlayerMode ? View.GONE : View.VISIBLE);
+        }
         if (sidebar.getVisibility() != View.VISIBLE) {
             sidebar.setVisibility(View.VISIBLE);
             sidebarShowing = true;
@@ -266,7 +329,6 @@ public class EpgMainActivity extends MainActivity {
             sidebar.setVisibility(View.GONE);
         }
         sidebarShowing = false;
-        lastActiveChannel = "";
     }
 
     private void applyPlayerRightMargin(int margin) {
@@ -291,7 +353,7 @@ public class EpgMainActivity extends MainActivity {
         if (webView == null || !isHome(webView.getUrl()) || channelCaptureRunning) return;
 
         long now = System.currentTimeMillis();
-        if (now - lastChannelCaptureAt < 1500) return;
+        if (now - lastChannelCaptureAt < 700) return;
 
         lastChannelCaptureAt = now;
         channelCaptureRunning = true;
@@ -335,31 +397,53 @@ public class EpgMainActivity extends MainActivity {
                 }
 
                 renderChannelList();
+                maybeLaunchDirectPlayer();
             } catch (Exception ignored) {
                 // A stale/partial JS result is harmless; the next pass retries.
             }
         });
     }
 
+    private void maybeLaunchDirectPlayer() {
+        if (!directLaunchPending || !directPlayerMode || webView == null) return;
+        if (!isValidChannelUrl(selectedChannelUrl)) return;
+        directLaunchPending = false;
+        webView.loadUrl(selectedChannelUrl);
+    }
+
+    private void launchDirectPlayerFallback() {
+        ensureWebView();
+        maybeLaunchDirectPlayer();
+    }
+
     private void refreshActiveChannelIfNeeded() {
-        if (!sidebarShowing || webView == null) return;
+        if (!sidebarShowing || webView == null || !selectedChannelUrl.isEmpty()) return;
         String active = currentStreamIdentity();
-        if (!active.equals(lastActiveChannel)) {
-            lastActiveChannel = active;
-            renderChannelList();
+        if (active.isEmpty()) return;
+
+        for (ChannelItem item : channels) {
+            if (matchesActiveChannel(item.url, active)) {
+                selectedChannelUrl = item.url;
+                renderChannelList();
+                return;
+            }
         }
     }
 
     private String currentStreamIdentity() {
         if (webView == null) return "";
 
+        String current = webView.getUrl();
+        if (current != null && !current.trim().isEmpty() && !isHome(current)) {
+            return current.trim();
+        }
+
         String original = webView.getOriginalUrl();
         if (original != null && !original.trim().isEmpty() && !isHome(original)) {
             return original.trim();
         }
 
-        String current = webView.getUrl();
-        return current == null ? "" : current.trim();
+        return "";
     }
 
     private void renderChannelList() {
@@ -370,9 +454,9 @@ public class EpgMainActivity extends MainActivity {
             TextView empty = new TextView(this);
             empty.setText("Sem canais na lista");
             empty.setTextColor(Color.rgb(141, 150, 165));
-            empty.setTextSize(13);
+            empty.setTextSize(12);
             empty.setGravity(Gravity.CENTER);
-            empty.setPadding(dp(10), dp(24), dp(10), dp(24));
+            empty.setPadding(dp(8), dp(20), dp(8), dp(20));
             channelList.addView(
                     empty,
                     new LinearLayout.LayoutParams(
@@ -383,7 +467,7 @@ public class EpgMainActivity extends MainActivity {
             return;
         }
 
-        String active = currentStreamIdentity();
+        String active = selectedChannelUrl.isEmpty() ? currentStreamIdentity() : selectedChannelUrl;
         int selectedIndex = -1;
 
         for (int i = 0; i < channels.size(); i++) {
@@ -394,7 +478,7 @@ public class EpgMainActivity extends MainActivity {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.VERTICAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(12), dp(7), dp(12), dp(7));
+            row.setPadding(dp(10), dp(6), dp(10), dp(6));
             row.setClickable(true);
             row.setFocusable(true);
             row.setBackground(roundedBackground(
@@ -405,7 +489,7 @@ public class EpgMainActivity extends MainActivity {
             TextView name = new TextView(this);
             name.setText(item.name);
             name.setTextColor(Color.WHITE);
-            name.setTextSize(14);
+            name.setTextSize(13);
             name.setSingleLine(true);
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             name.setTypeface(
@@ -425,7 +509,7 @@ public class EpgMainActivity extends MainActivity {
             category.setTextColor(
                     selected ? Color.rgb(255, 167, 180) : Color.rgb(141, 150, 165)
             );
-            category.setTextSize(10);
+            category.setTextSize(9);
             category.setSingleLine(true);
             category.setEllipsize(android.text.TextUtils.TruncateAt.END);
 
@@ -433,24 +517,24 @@ public class EpgMainActivity extends MainActivity {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
             );
-            categoryParams.topMargin = dp(2);
+            categoryParams.topMargin = dp(1);
             row.addView(category, categoryParams);
 
             row.setOnClickListener(v -> openChannelFromSidebar(item));
 
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(58)
+                    dp(52)
             );
-            rowParams.bottomMargin = dp(6);
+            rowParams.bottomMargin = dp(5);
             channelList.addView(row, rowParams);
         }
 
         if (selectedIndex >= 0 && channelScroll != null) {
             final int index = selectedIndex;
             channelScroll.post(() -> {
-                int target = index * dp(64);
-                channelScroll.smoothScrollTo(0, Math.max(0, target - dp(72)));
+                int target = index * dp(57);
+                channelScroll.smoothScrollTo(0, Math.max(0, target - dp(62)));
             });
         }
     }
@@ -481,18 +565,57 @@ public class EpgMainActivity extends MainActivity {
     private void openChannelFromSidebar(ChannelItem item) {
         if (webView == null || item == null || item.url.isEmpty()) return;
 
-        String active = currentStreamIdentity();
+        String active = selectedChannelUrl.isEmpty() ? currentStreamIdentity() : selectedChannelUrl;
         if (matchesActiveChannel(item.url, active)) return;
 
-        lastActiveChannel = item.url;
+        rememberChannel(item.url);
         webView.loadUrl(item.url);
         renderChannelList();
+    }
+
+    private void rememberChannel(String value) {
+        String url = value == null ? "" : value.trim();
+        if (!isValidChannelUrl(url)) return;
+        selectedChannelUrl = url;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString(PREF_LAST_CHANNEL, url)
+                .apply();
+    }
+
+    private void enableDirectPlayerMode(String value) {
+        String url = value == null ? "" : value.trim();
+        if (!isValidChannelUrl(url)) return;
+
+        rememberChannel(url);
+        directPlayerMode = true;
+        directLaunchPending = false;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean(PREF_DIRECT_MODE, true)
+                .putString(PREF_LAST_CHANNEL, url)
+                .apply();
+
+        if (sidebarBackButton != null) sidebarBackButton.setVisibility(View.GONE);
+        if (statusHomeButton != null) statusHomeButton.setVisibility(View.GONE);
+        if (legacyBackButton != null) legacyBackButton.setVisibility(View.GONE);
+        if (webView != null) webView.loadUrl(url);
+        handler.postDelayed(this::checkDirectModeUpdate, 1400);
+    }
+
+    private boolean isValidChannelUrl(String value) {
+        try {
+            Uri uri = Uri.parse(value == null ? "" : value.trim());
+            String scheme = uri.getScheme();
+            return uri.getHost() != null
+                    && ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme));
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private GradientDrawable roundedBackground(int fillColor, int strokeColor) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(fillColor);
-        drawable.setCornerRadius(dp(12));
+        drawable.setCornerRadius(dp(11));
         drawable.setStroke(dp(1), strokeColor);
         return drawable;
     }
@@ -509,6 +632,11 @@ public class EpgMainActivity extends MainActivity {
     private String loadEpgUrlScript() throws Exception {
         if (epgUrlScript == null) epgUrlScript = loadAssetScript("epg-url.js");
         return epgUrlScript;
+    }
+
+    private String loadDirectModeScript() throws Exception {
+        if (directModeScript == null) directModeScript = loadAssetScript("direct-mode.js");
+        return directModeScript;
     }
 
     private String loadAssetScript(String name) throws Exception {
@@ -544,6 +672,84 @@ public class EpgMainActivity extends MainActivity {
         current.post(() -> {
             if (isHome(current.getUrl())) current.evaluateJavascript(script, null);
         });
+    }
+
+    private void checkDirectModeUpdate() {
+        if (!directPlayerMode || directUpdateDialogShown || isFinishing()) return;
+
+        epgBackground.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(UPDATE_MANIFEST + "?v=" + System.currentTimeMillis());
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+                connection.setUseCaches(false);
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("User-Agent", "Live-TV/" + BuildConfig.VERSION_NAME);
+
+                if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) return;
+
+                StringBuilder json = new StringBuilder();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                        connection.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) json.append(line);
+                }
+
+                JSONObject obj = new JSONObject(json.toString());
+                int versionCode = obj.optInt("versionCode", 0);
+                String versionName = obj.optString("versionName", "").trim();
+                String apkUrl = obj.optString("apkUrl", "").trim();
+                String notes = obj.optString("notes", "").trim();
+
+                if (versionCode <= BuildConfig.VERSION_CODE || !isTrustedUpdateUrl(apkUrl)) return;
+
+                handler.post(() -> showDirectModeUpdate(versionCode, versionName, apkUrl, notes));
+            } catch (Exception ignored) {
+                // Update checks must never interrupt playback.
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private void showDirectModeUpdate(int versionCode, String versionName, String apkUrl, String notes) {
+        if (!directPlayerMode || directUpdateDialogShown || isFinishing()) return;
+        directUpdateDialogShown = true;
+
+        String version = versionName.isEmpty() ? String.valueOf(versionCode) : versionName;
+        String message = "Está disponível a versão " + version + ".";
+        if (!notes.isEmpty()) message += "\n\n" + notes;
+
+        new AlertDialog.Builder(this)
+                .setTitle("Nova versão disponível")
+                .setMessage(message)
+                .setNegativeButton("Mais tarde", null)
+                .setPositiveButton("Atualizar", (dialog, which) -> {
+                    try {
+                        Intent intent = new Intent(this, UpdateActivity.class);
+                        intent.putExtra(UpdateActivity.EXTRA_APK_URL, apkUrl);
+                        intent.putExtra(UpdateActivity.EXTRA_VERSION, version);
+                        startActivity(intent);
+                    } catch (Exception ignored) {}
+                })
+                .show();
+    }
+
+    private boolean isTrustedUpdateUrl(String value) {
+        try {
+            Uri uri = Uri.parse(value == null ? "" : value.trim());
+            if (!"https".equalsIgnoreCase(uri.getScheme())) return false;
+            String host = uri.getHost();
+            if (host == null || host.trim().isEmpty()) return false;
+            host = IDN.toASCII(host.trim().toLowerCase(Locale.ROOT));
+            return host.equals("raw.githubusercontent.com")
+                    || host.endsWith(".raw.githubusercontent.com")
+                    || host.equals("atsisqual.github.io");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private final class EpgBridge {
@@ -617,6 +823,34 @@ public class EpgMainActivity extends MainActivity {
                 }
             });
         }
+
+        @JavascriptInterface
+        public void rememberChannel(String value) {
+            WebView current = webView;
+            if (current == null || !isHome(current.getUrl())) return;
+            handler.post(() -> EpgMainActivity.this.rememberChannel(value));
+        }
+
+        @JavascriptInterface
+        public void enableDirectMode(String value) {
+            WebView current = webView;
+            if (current == null || !isHome(current.getUrl())) return;
+            handler.post(() -> enableDirectPlayerMode(value));
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (directPlayerMode) {
+            ensureWebView();
+            if (webView != null && webView.getVisibility() != View.VISIBLE) {
+                super.onBackPressed();
+                return;
+            }
+            moveTaskToBack(true);
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override
