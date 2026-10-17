@@ -30,9 +30,9 @@ import java.util.Set;
 public class MainActivity extends Activity {
 
     /*
-     * 1.4.0 keeps the stable 1.3.8 player-navigation model, but adds a proper
-     * Android shell around it: safe system-bar insets during normal browsing and
-     * real immersive fullscreen only while a player explicitly requests it.
+     * 1.4.1 keeps the stable top-level player model and safe-area/fullscreen shell.
+     * The local home resolves known catalogue entries directly to Player 1. If an
+     * API Total page is still required, the WebView automatically activates Player 1.
      */
     private static final Set<String> BLOCKED_HOSTS = unmodifiableSet(
             "histats.com",
@@ -120,7 +120,6 @@ public class MainActivity extends Activity {
             });
             web.requestApplyInsets();
         } else {
-            /* Older Android versions still fit content inside system windows by default. */
             getWindow().setStatusBarColor(Color.BLACK);
             getWindow().setNavigationBarColor(Color.BLACK);
         }
@@ -138,8 +137,6 @@ public class MainActivity extends Activity {
         s.setJavaScriptCanOpenWindowsAutomatically(false);
         s.setSupportMultipleWindows(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-
-        /* Keep the default WebView UA stable throughout Cloudflare challenges. */
         s.setUserAgentString(s.getUserAgentString());
 
         CookieManager.getInstance().setAcceptCookie(true);
@@ -155,14 +152,11 @@ public class MainActivity extends Activity {
                 if (!request.isForMainFrame() || !isHttp(uri)) return false;
 
                 String current = view.getUrl();
-
-                /* A channel click from our local home page is an explicit user navigation. */
                 if (current != null && (current.startsWith("file:///android_asset/")
                         || current.startsWith("about:"))) {
                     return false;
                 }
 
-                /* Allow only known player/wrapper top-level navigation after leaving home. */
                 String host = normalizedHost(uri);
                 return host == null || !matchesAny(host, PLAYER_HOSTS);
             }
@@ -185,6 +179,12 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                autoSelectPlayerOne(view, url);
+            }
+
+            @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 if (isBlocked(request.getUrl())) return emptyResponse();
                 return super.shouldInterceptRequest(view, request);
@@ -195,7 +195,6 @@ public class MainActivity extends Activity {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
                                           android.os.Message resultMsg) {
-                /* Do not create secondary WebViews/windows: classic popup/popunder ads die here. */
                 return false;
             }
 
@@ -218,6 +217,39 @@ public class MainActivity extends Activity {
                 exitFullscreen();
             }
         });
+    }
+
+    private void autoSelectPlayerOne(WebView view, String url) {
+        if (url == null) return;
+        Uri uri;
+        try {
+            uri = Uri.parse(url);
+        } catch (Exception ignored) {
+            return;
+        }
+
+        String host = normalizedHost(uri);
+        if (host == null || !domainMatches(host, "apitotal.net")) return;
+
+        String script =
+                "(function(){" +
+                "if(window.__liveTvPlayer1Auto)return;" +
+                "window.__liveTvPlayer1Auto=true;" +
+                "function pick(){" +
+                "var all=[].slice.call(document.querySelectorAll('a,button,[role=button]'));" +
+                "var e=all.find(function(x){" +
+                "var t=(x.textContent||'').replace(/\\s+/g,' ').trim();" +
+                "var id=((x.id||'')+' '+(x.className||'')).toString();" +
+                "return /^PLAYER\\s*1$/i.test(t)||/^PLAYER1$/i.test(t)||/player[-_\\s]?1/i.test(id);" +
+                "});" +
+                "if(e){e.click();return true;}return false;" +
+                "}" +
+                "if(pick())return;" +
+                "var o=new MutationObserver(function(){if(pick())o.disconnect();});" +
+                "o.observe(document.documentElement,{childList:true,subtree:true});" +
+                "setTimeout(function(){o.disconnect();pick();},8000);" +
+                "})();";
+        view.evaluateJavascript(script, null);
     }
 
     private void hideSystemBars() {
@@ -268,7 +300,6 @@ public class MainActivity extends Activity {
 
         if (path.endsWith("/sccfwxq.png")) return true;
         if (path.endsWith("/rs4k-adbanner.html")) return true;
-
         if (domainMatches(host, "sharethis.com") && path.startsWith("/pd/dtscout")) return true;
 
         return false;
