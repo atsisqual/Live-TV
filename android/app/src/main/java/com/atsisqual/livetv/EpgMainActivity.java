@@ -60,6 +60,9 @@ public class EpgMainActivity extends MainActivity {
     private final ExecutorService logoBackground = Executors.newFixedThreadPool(3);
     private final List<ChannelItem> channels = new ArrayList<>();
     private final Map<String, Bitmap> logoCache = new ConcurrentHashMap<>();
+    private final Map<String, String> bundledLogoDark = new ConcurrentHashMap<>();
+    private final Map<String, String> bundledLogoLight = new ConcurrentHashMap<>();
+    private boolean bundledLogosLoaded;
 
     private WebView webView;
     private FrameLayout playerRoot;
@@ -149,6 +152,7 @@ public class EpgMainActivity extends MainActivity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        loadBundledChannelLogos();
 
         directPlayerMode = getSharedPreferences(PREFS, MODE_PRIVATE)
                 .getBoolean(PREF_DIRECT_MODE, false);
@@ -358,6 +362,32 @@ public class EpgMainActivity extends MainActivity {
         }
     }
 
+    private void loadBundledChannelLogos() {
+        if (bundledLogosLoaded) return;
+        bundledLogosLoaded = true;
+        try (InputStream input = getAssets().open("portugal-sports-channels.json")) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[16 * 1024];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            JSONObject root = new JSONObject(output.toString(StandardCharsets.UTF_8.name()));
+            JSONArray items = root.optJSONArray("channels");
+            if (items == null) return;
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.optJSONObject(i);
+                if (item == null) continue;
+                String slug = item.optString("slug", "").trim().toLowerCase(Locale.ROOT);
+                if (slug.isEmpty()) continue;
+                String dark = item.optString("logo_dark", "").trim();
+                String light = item.optString("logo_light", "").trim();
+                if (!dark.isEmpty()) bundledLogoDark.put(slug, dark);
+                if (!light.isEmpty()) bundledLogoLight.put(slug, light);
+            }
+        } catch (Exception ignored) {
+            // Channel list must remain usable even if optional logos cannot be read.
+        }
+    }
+
     private void captureChannelsIfNeeded() {
         if (webView == null || !isHome(webView.getUrl()) || channelCaptureRunning) return;
 
@@ -374,7 +404,7 @@ public class EpgMainActivity extends MainActivity {
                         + "if(typeof sortItems==='function')a=sortItems(a);"
                         + "return {ready:true,items:a.filter(function(x){return x&&x.url;}).map(function(x){"
                         + "return {name:String(x.name||'Canal'),url:String(x.url||''),"
-                        + "category:String(x.category||'Canal'),logo:String(x.logo||'')};"
+                        + "category:String(x.category||'Canal'),slug:String(x.slug||'')};"
                         + "})};"
                         + "}catch(e){return {ready:false,items:[]};}})()";
 
@@ -395,7 +425,8 @@ public class EpgMainActivity extends MainActivity {
                         String name = item.optString("name", "Canal").trim();
                         String url = item.optString("url", "").trim();
                         String category = item.optString("category", "Canal").trim();
-                        String logo = item.optString("logo", "").trim();
+                        String slug = item.optString("slug", "").trim().toLowerCase(Locale.ROOT);
+                        String logo = bundledLogoDark.getOrDefault(slug, "");
                         if (url.isEmpty()) continue;
 
                         channels.add(new ChannelItem(
