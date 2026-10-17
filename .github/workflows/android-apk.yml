@@ -12,8 +12,6 @@ permissions:
   contents: write
 
 env:
-  APK_VERSION: '1.6.1'
-  APK_VERSION_CODE: '28'
   SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
   SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
   SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS || secrets.ANDROID_KEY_ALIAS }}
@@ -54,6 +52,18 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+
+      - name: Resolve app version from Gradle
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_VERSION="$(sed -n "s/^[[:space:]]*versionName[[:space:]]*'\([^']*\)'.*/\1/p" android/app/build.gradle | head -n1)"
+          APK_VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9][0-9]*\).*/\1/p' android/app/build.gradle | head -n1)"
+          test -n "$APK_VERSION"
+          test -n "$APK_VERSION_CODE"
+          echo "APK_VERSION=$APK_VERSION" >> "$GITHUB_ENV"
+          echo "APK_VERSION_CODE=$APK_VERSION_CODE" >> "$GITHUB_ENV"
+          echo "Resolved Live TV v${APK_VERSION} (code ${APK_VERSION_CODE})"
 
       - name: Prepare release signing
         shell: bash
@@ -98,8 +108,8 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Live-TV-v1.6.1
-          path: Live-TV-v1.6.1.apk
+          name: Live-TV-APK
+          path: Live-TV-*.apk
           if-no-files-found: error
 
       - name: Publish APK and update manifest to GitHub Pages
@@ -122,7 +132,7 @@ jobs:
             "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v${APK_VERSION}.apk",
             "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
             "signedRelease": true,
-            "notes": "DLive passa a ser usado automaticamente nos canais Portugal mapeados, sem reimportar a lista. Bloqueio reforçado de popunders, links _blank e cortinas transparentes fullscreen. Auto-update ativo.",
+            "notes": "DLive direto nos canais Portugal. Bloqueio adicional dos redirects de publicidade observados em dlive/dlhd, mantendo o embed do player intacto. Auto-update ativo.",
             "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF
