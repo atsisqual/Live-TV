@@ -3,6 +3,7 @@ package com.atsisqual.livetv;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.net.Uri;
@@ -105,6 +106,7 @@ public class MainActivity extends Activity {
     private TextView statusDetail;
     private Button retryButton;
     private Button homeButton;
+    private Button streamBackButton;
 
     private View fullscreen;
     private WebChromeClient.CustomViewCallback fullscreenCallback;
@@ -124,6 +126,7 @@ public class MainActivity extends Activity {
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
 
         buildStatusOverlay();
+        buildStreamBackButton();
         setContentView(root);
 
         configureSystemBars();
@@ -170,10 +173,7 @@ public class MainActivity extends Activity {
         panel.addView(retryButton, buttonLayoutParams());
 
         homeButton = makeStatusButton("Voltar aos canais", false);
-        homeButton.setOnClickListener(v -> {
-            mainFrameFailed = false;
-            web.loadUrl(HOME_URL);
-        });
+        homeButton.setOnClickListener(v -> returnToChannels());
         LinearLayout.LayoutParams homeParams = buttonLayoutParams();
         homeParams.topMargin = dp(9);
         panel.addView(homeButton, homeParams);
@@ -181,6 +181,25 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
         statusOverlay.addView(panel, panelParams);
         root.addView(statusOverlay, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private void buildStreamBackButton() {
+        streamBackButton = new Button(this);
+        streamBackButton.setText("← Voltar");
+        streamBackButton.setAllCaps(false);
+        streamBackButton.setTextSize(18);
+        streamBackButton.setTextColor(Color.WHITE);
+        streamBackButton.setTypeface(streamBackButton.getTypeface(), android.graphics.Typeface.BOLD);
+        streamBackButton.setBackgroundColor(Color.rgb(22, 27, 35));
+        streamBackButton.setMinHeight(dp(56));
+        streamBackButton.setPadding(dp(18), 0, dp(18), 0);
+        streamBackButton.setVisibility(View.GONE);
+        streamBackButton.setOnClickListener(v -> returnToChannels());
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                dp(132), dp(56), Gravity.TOP | Gravity.START);
+        params.setMargins(dp(12), dp(12), 0, 0);
+        root.addView(streamBackButton, params);
     }
 
     private Button makeStatusButton(String label, boolean primary) {
@@ -213,15 +232,13 @@ public class MainActivity extends Activity {
 
             root.setOnApplyWindowInsetsListener((view, windowInsets) -> {
                 if (fullscreen != null) {
-                    web.setPadding(0, 0, 0, 0);
-                    statusOverlay.setPadding(0, 0, 0, 0);
+                    root.setPadding(0, 0, 0, 0);
                     return windowInsets;
                 }
 
                 Insets safe = windowInsets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                web.setPadding(safe.left, safe.top, safe.right, safe.bottom);
-                statusOverlay.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                root.setPadding(safe.left, safe.top, safe.right, safe.bottom);
                 return windowInsets;
             });
             root.requestApplyInsets();
@@ -278,9 +295,11 @@ public class MainActivity extends Activity {
                 mainFrameFailed = false;
 
                 if (isLocalHome(url)) {
+                    enterHomeMode();
                     getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     hideStatus();
                 } else {
+                    enterStreamMode();
                     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     showLoading(url);
                 }
@@ -296,6 +315,7 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 if (!mainFrameFailed) hideStatus();
+                applySimpleModeToPage(url);
                 if (isLocalHome(url)) maybeShowPendingUpdate();
             }
 
@@ -348,7 +368,12 @@ public class MainActivity extends Activity {
                 fullscreenCallback = callback;
                 statusOverlay.setVisibility(View.GONE);
                 web.setVisibility(View.GONE);
+                root.setPadding(0, 0, 0, 0);
                 root.addView(view, new FrameLayout.LayoutParams(-1, -1));
+                if (streamBackButton != null) {
+                    streamBackButton.setVisibility(View.VISIBLE);
+                    streamBackButton.bringToFront();
+                }
                 hideSystemBars();
             }
 
@@ -357,6 +382,53 @@ public class MainActivity extends Activity {
                 exitFullscreen();
             }
         });
+    }
+
+    private void enterHomeMode() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+        if (streamBackButton != null) streamBackButton.setVisibility(View.GONE);
+        showSystemBars();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) root.requestApplyInsets();
+    }
+
+    private void enterStreamMode() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        if (streamBackButton != null) {
+            streamBackButton.setVisibility(View.VISIBLE);
+            streamBackButton.bringToFront();
+        }
+    }
+
+    private void returnToChannels() {
+        mainFrameFailed = false;
+        hideStatus();
+        if (fullscreen != null) exitFullscreen();
+        web.loadUrl(HOME_URL);
+    }
+
+    private void applySimpleModeToPage(String url) {
+        if (url == null) return;
+
+        if (isLocalHome(url)) {
+            web.evaluateJavascript(
+                    "(function(){var s=document.getElementById('livetv-simple-style');"
+                            + "if(!s){s=document.createElement('style');s.id='livetv-simple-style';"
+                            + "s.textContent='.livebadge{display:none!important}';"
+                            + "(document.head||document.documentElement).appendChild(s);}})();",
+                    null);
+            return;
+        }
+
+        web.evaluateJavascript(
+                "(function(){if(window.__liveTvAudioHelper)return;window.__liveTvAudioHelper=true;"
+                        + "function p(r){try{(r||document).querySelectorAll('video,audio').forEach(function(m){"
+                        + "try{if(!m.dataset.livetvSound){m.muted=false;m.defaultMuted=false;m.volume=1;"
+                        + "m.dataset.livetvSound='1';}}catch(e){}});}catch(e){}}"
+                        + "p(document);new MutationObserver(function(ms){ms.forEach(function(x){"
+                        + "x.addedNodes&&x.addedNodes.forEach(function(n){if(n.nodeType===1){"
+                        + "if(n.matches&&n.matches('video,audio')){try{n.muted=false;n.defaultMuted=false;n.volume=1;}catch(e){}}p(n);}});});"
+                        + "}).observe(document.documentElement,{childList:true,subtree:true});})();",
+                null);
     }
 
     private void showLoading(String url) {
@@ -375,6 +447,7 @@ public class MainActivity extends Activity {
         homeButton.setVisibility(View.GONE);
         statusOverlay.setVisibility(View.VISIBLE);
         statusOverlay.bringToFront();
+        if (streamBackButton != null) streamBackButton.bringToFront();
     }
 
     private void showError(String title, String detail) {
@@ -386,6 +459,7 @@ public class MainActivity extends Activity {
         homeButton.setVisibility(View.VISIBLE);
         statusOverlay.setVisibility(View.VISIBLE);
         statusOverlay.bringToFront();
+        if (streamBackButton != null) streamBackButton.bringToFront();
     }
 
     private void hideStatus() {
@@ -583,6 +657,10 @@ public class MainActivity extends Activity {
         showSystemBars();
         web.setVisibility(View.VISIBLE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) root.requestApplyInsets();
+        if (streamBackButton != null && !isLocalHome(web.getUrl())) {
+            streamBackButton.setVisibility(View.VISIBLE);
+            streamBackButton.bringToFront();
+        }
 
         if (fullscreenCallback != null) {
             fullscreenCallback.onCustomViewHidden();
@@ -600,6 +678,10 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if (fullscreen != null) {
             exitFullscreen();
+            return;
+        }
+        if (!isLocalHome(web.getUrl())) {
+            returnToChannels();
             return;
         }
         if (web.canGoBack()) {
