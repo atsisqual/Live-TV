@@ -24,11 +24,12 @@ import java.util.Set;
 
 public class MainActivity extends Activity {
 
-    /* Targeted list only. The broad AdGuard DNS list used by 1.3.4 was deliberately
-       removed because it also blocked dependencies required by embedded players. */
+    /*
+     * 1.3.6 uses targeted ad/tracker blocking only.
+     * Player infrastructure must never be placed in this host blacklist because
+     * several providers depend on rotating/nested domains and on the Referer header.
+     */
     private static final Set<String> BLOCKED_HOSTS = unmodifiableSet(
-            "aliexpress.com",
-            "dlhd.st",
             "histats.com",
             "crwdcntrl.net",
             "popcash.net",
@@ -47,36 +48,10 @@ public class MainActivity extends Activity {
             "asdfix.com",
             "rbtget.com",
             "rbtrgr.com",
-            "bluetier.top",
-            "rxfexvfreikpo.website",
-            "sootoarathus.net",
-            "bblaa.com",
-            "savantwaxwing.cyou",
-            "flushpersist.com",
-            "405kk.com",
-            "nangasynaxis.cyou",
-            "joltieregoizegametic.cyou",
-            "sospirochan.cyou",
-            "thirstacock.com",
-            "peckyspurned.cyou",
-            "ylowerhughester.org",
-            "thiaminspumous.qpon",
-            "skoutydeals.com",
-            "cowedd4855ws.sbs",
-            "484r.com",
-            "ay267.com",
             "connatix.com",
-            "luugy.com",
-            "realizationnewestfangs.com",
-            "llvpn.com",
-            "portalfluently.com",
-            "protrafficinspector.com",
-            "briguefidibus.com",
-            "dqqmfckpmfvkk.space",
             "amung.us",
             "serveproxy.com",
-            "comeumamao.monster",
-            "azureedgeglobalfastlycloudfrontondigitaloceanstackpathcdn.buzz"
+            "protrafficinspector.com"
     );
 
     private FrameLayout root;
@@ -112,7 +87,7 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
 
-        /* Executes before page scripts in matching frames, including nested cross-origin iframes. */
+        /* Runs before page scripts in matching frames, including nested cross-origin iframes. */
         AdCleaner.install(web);
 
         web.setWebViewClient(new WebViewClient() {
@@ -121,8 +96,7 @@ public class MainActivity extends Activity {
                 Uri uri = request.getUrl();
                 if (isBlocked(uri)) return true;
 
-                /* Prevent a third-party iframe from taking over the app's top-level page.
-                   Sub-frame navigation is allowed unless the destination is explicitly blocked. */
+                /* Keep third-party frames from replacing the local application page. */
                 if (request.isForMainFrame() && isHttp(uri) && !isRtp(uri)) return true;
                 return false;
             }
@@ -130,8 +104,7 @@ public class MainActivity extends Activity {
             @Override
             @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                /* Old WebView callback does not expose isForMainFrame(). Blocking every HTTP URL
-                   here broke nested players in 1.3.4, so only explicit ad/tracker hosts are denied. */
+                /* Old callback has no isForMainFrame(), therefore only explicit ads are denied. */
                 return isBlocked(Uri.parse(url));
             }
 
@@ -146,6 +119,7 @@ public class MainActivity extends Activity {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
                                           android.os.Message resultMsg) {
+                /* No secondary WebView/window: kills classic popup/popunder advertising. */
                 return false;
             }
 
@@ -181,7 +155,30 @@ public class MainActivity extends Activity {
 
     private boolean isBlocked(Uri uri) {
         String host = normalizedHost(uri);
-        return host != null && matchesAny(host, BLOCKED_HOSTS);
+        if (host == null) return false;
+
+        if (matchesAny(host, BLOCKED_HOSTS)) return true;
+
+        String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
+        String query = uri.getQuery() == null ? "" : uri.getQuery().toLowerCase(Locale.ROOT);
+
+        /* EasyList documents this affiliate URL as popup advertising. */
+        if ("s.click.aliexpress.com".equals(host)
+                && path.startsWith("/e/")
+                && query.contains("dp=")) {
+            return true;
+        }
+
+        /* Same-origin image observed on the sportsonliine wrapper. */
+        if (path.endsWith("/sccfwxq.png")) return true;
+
+        /* EasyList/uBlock documented DaddyLive/DLHD ad banner. */
+        if (path.endsWith("/rs4k-adbanner.html")) return true;
+
+        /* Tracker observed on the sportsonliine wrapper. */
+        if (domainMatches(host, "sharethis.com") && path.startsWith("/pd/dtscout")) return true;
+
+        return false;
     }
 
     private String normalizedHost(Uri uri) {
