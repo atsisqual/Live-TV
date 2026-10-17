@@ -1,0 +1,16 @@
+{
+  "channels": [
+    {"name":"Canal 11","slug":"canal-11","epg_id":"Canal11.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/canal-11","player":1,"logo":"https://www.canal11.pt/images/customer/logo.png"},
+    {"name":"Dazn","slug":"dazn","epg_id":"DAZN1.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/dazn","player":1,"logo":"https://www.meo.pt/PublishingImages/canais/dazn-eleven-1-meo-logo.webp"},
+    {"name":"Dazn2","slug":"dazn2","epg_id":"DAZN2.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/dazn2","player":1,"logo":"https://www.meo.pt/PublishingImages/canais/dazn-eleven-2-meo-logo.webp"},
+    {"name":"Dazn3","slug":"dazn3","epg_id":"DAZN3.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/dazn3","player":1,"logo":"https://www.meo.pt/PublishingImages/canais/dazn-eleven-3-meo-logo.webp"},
+    {"name":"Sport TV","slug":"sport-tv","epg_id":"SportTV1.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/sport-tv","player":1,"logo":"https://www.meo.pt/PublishingImages/logos/sport-tv-logo-desktop.webp"},
+    {"name":"Sport TV 2","slug":"sport-tv-2","epg_id":"SportTV2.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/sport-tv-2","player":1,"logo":"https://www.meo.pt/PublishingImages/logos/sport-tv-logo-desktop.webp"},
+    {"name":"Sport TV 3","slug":"sport-tv-3","epg_id":"SportTV3.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/sport-tv-3","player":1,"logo":"https://www.meo.pt/PublishingImages/logos/sport-tv-logo-desktop.webp"},
+    {"name":"Sport TV 4","slug":"sport-tv-4","epg_id":"SportTV4.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/sport-tv-4","player":1,"logo":"https://www.meo.pt/PublishingImages/logos/sport-tv-logo-desktop.webp"},
+    {"name":"Sport TV 5","slug":"sport-tv-5","epg_id":"SportTV5.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/sport-tv-5","player":1,"logo":"https://www.meo.pt/PublishingImages/logos/sport-tv-logo-desktop.webp"},
+    {"name":"Sport TV 6","slug":"sport-tv-6","epg_id":"SportTV6.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/sport-tv-6","player":1,"logo":"https://www.meo.pt/PublishingImages/logos/sport-tv-logo-desktop.webp"},
+    {"name":"Sporting TV","slug":"sporting-tv","epg_id":"SportingTV.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/sporting-tv","player":1,"logo":"https://upload.wikimedia.org/wikipedia/pt/b/b4/Sporting_TV.png"},
+    {"name":"Benfica TV","slug":"benfica-tv","epg_id":"BenficaTV.pt","category":"Portugal","url":"https://apitotal.net/0112/tv001/benfica-tv","player":3,"logo":"https://www.meo.pt/PublishingImages/logos/btv-logo.png"}
+  ]
+}

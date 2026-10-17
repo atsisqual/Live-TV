@@ -2,12 +2,15 @@ package com.atsisqual.livetv;
 
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,6 +18,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -33,6 +37,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.zip.GZIPInputStream;
@@ -46,11 +52,14 @@ public class EpgMainActivity extends MainActivity {
     private static final String PREF_DIRECT_MODE = "direct-player-mode";
     private static final String PREF_LAST_CHANNEL = "last-channel-url";
     private static final int MAX_XMLTV_BYTES = 12 * 1024 * 1024;
-    private static final int SIDEBAR_WIDTH_DP = 184;
+    private static final int MAX_LOGO_BYTES = 768 * 1024;
+    private static final int SIDEBAR_WIDTH_DP = 216;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService epgBackground = Executors.newSingleThreadExecutor();
+    private final ExecutorService logoBackground = Executors.newFixedThreadPool(3);
     private final List<ChannelItem> channels = new ArrayList<>();
+    private final Map<String, Bitmap> logoCache = new ConcurrentHashMap<>();
 
     private WebView webView;
     private FrameLayout playerRoot;
@@ -365,7 +374,7 @@ public class EpgMainActivity extends MainActivity {
                         + "if(typeof sortItems==='function')a=sortItems(a);"
                         + "return {ready:true,items:a.filter(function(x){return x&&x.url;}).map(function(x){"
                         + "return {name:String(x.name||'Canal'),url:String(x.url||''),"
-                        + "category:String(x.category||'Canal')};"
+                        + "category:String(x.category||'Canal'),logo:String(x.logo||'')};"
                         + "})};"
                         + "}catch(e){return {ready:false,items:[]};}})()";
 
@@ -386,12 +395,14 @@ public class EpgMainActivity extends MainActivity {
                         String name = item.optString("name", "Canal").trim();
                         String url = item.optString("url", "").trim();
                         String category = item.optString("category", "Canal").trim();
+                        String logo = item.optString("logo", "").trim();
                         if (url.isEmpty()) continue;
 
                         channels.add(new ChannelItem(
                                 name.isEmpty() ? "Canal" : name,
                                 url,
-                                category.isEmpty() ? "Canal" : category
+                                category.isEmpty() ? "Canal" : category,
+                                logo
                         ));
                     }
                 }
@@ -476,15 +487,19 @@ public class EpgMainActivity extends MainActivity {
             if (selected) selectedIndex = i;
 
             LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.VERTICAL);
+            row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(10), dp(6), dp(10), dp(6));
+            row.setPadding(dp(10), dp(5), dp(9), dp(5));
             row.setClickable(true);
             row.setFocusable(true);
             row.setBackground(roundedBackground(
                     selected ? Color.rgb(66, 26, 36) : Color.rgb(23, 28, 36),
                     selected ? Color.rgb(255, 48, 79) : Color.rgb(41, 49, 61)
             ));
+
+            LinearLayout textWrap = new LinearLayout(this);
+            textWrap.setOrientation(LinearLayout.VERTICAL);
+            textWrap.setGravity(Gravity.CENTER_VERTICAL);
 
             TextView name = new TextView(this);
             name.setText(item.name);
@@ -496,7 +511,7 @@ public class EpgMainActivity extends MainActivity {
                     name.getTypeface(),
                     selected ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL
             );
-            row.addView(
+            textWrap.addView(
                     name,
                     new LinearLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -518,13 +533,34 @@ public class EpgMainActivity extends MainActivity {
                     ViewGroup.LayoutParams.WRAP_CONTENT
             );
             categoryParams.topMargin = dp(1);
-            row.addView(category, categoryParams);
+            textWrap.addView(category, categoryParams);
+
+            LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    1f
+            );
+            row.addView(textWrap, textParams);
+
+            if (!item.logo.isEmpty()) {
+                ImageView logo = new ImageView(this);
+                logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                logo.setAdjustViewBounds(true);
+                logo.setPadding(dp(2), dp(2), dp(2), dp(2));
+                LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(
+                        dp(48),
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                );
+                logoParams.leftMargin = dp(8);
+                row.addView(logo, logoParams);
+                loadChannelLogo(logo, item.logo);
+            }
 
             row.setOnClickListener(v -> openChannelFromSidebar(item));
 
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(52)
+                    dp(58)
             );
             rowParams.bottomMargin = dp(5);
             channelList.addView(row, rowParams);
@@ -533,9 +569,101 @@ public class EpgMainActivity extends MainActivity {
         if (selectedIndex >= 0 && channelScroll != null) {
             final int index = selectedIndex;
             channelScroll.post(() -> {
-                int target = index * dp(57);
-                channelScroll.smoothScrollTo(0, Math.max(0, target - dp(62)));
+                int target = index * dp(63);
+                channelScroll.smoothScrollTo(0, Math.max(0, target - dp(68)));
             });
+        }
+    }
+
+    private void loadChannelLogo(ImageView view, String value) {
+        if (view == null) return;
+        String logo = value == null ? "" : value.trim();
+        if (logo.isEmpty()) return;
+
+        view.setTag(logo);
+        Bitmap cached = logoCache.get(logo);
+        if (cached != null) {
+            view.setImageBitmap(cached);
+            return;
+        }
+
+        if (logo.regionMatches(true, 0, "data:image/", 0, 11)) {
+            Bitmap bitmap = decodeDataLogo(logo);
+            if (bitmap != null) {
+                logoCache.put(logo, bitmap);
+                view.setImageBitmap(bitmap);
+            }
+            return;
+        }
+
+        if (!isValidLogoUrl(logo)) return;
+        logoBackground.execute(() -> {
+            Bitmap bitmap = downloadLogo(logo);
+            if (bitmap == null) return;
+            logoCache.put(logo, bitmap);
+            view.post(() -> {
+                Object tag = view.getTag();
+                if (tag != null && logo.equals(tag.toString())) view.setImageBitmap(bitmap);
+            });
+        });
+    }
+
+    private Bitmap decodeDataLogo(String value) {
+        try {
+            int comma = value.indexOf(',');
+            if (comma <= 0 || !value.substring(0, comma).toLowerCase(Locale.ROOT).contains(";base64")) {
+                return null;
+            }
+            byte[] bytes = Base64.decode(value.substring(comma + 1), Base64.DEFAULT);
+            if (bytes.length == 0 || bytes.length > MAX_LOGO_BYTES) return null;
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private boolean isValidLogoUrl(String value) {
+        try {
+            Uri uri = Uri.parse(value == null ? "" : value.trim());
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && uri.getHost() != null
+                    && !uri.getHost().trim().isEmpty();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private Bitmap downloadLogo(String value) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(value).openConnection();
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(8000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setUseCaches(true);
+            connection.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+            connection.setRequestProperty("User-Agent", "TV-do-Ze/" + BuildConfig.VERSION_NAME);
+            int code = connection.getResponseCode();
+            if (code < 200 || code >= 300) return null;
+
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[16 * 1024];
+            int total = 0;
+            try (InputStream input = connection.getInputStream()) {
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    total += count;
+                    if (total > MAX_LOGO_BYTES) return null;
+                    output.write(buffer, 0, count);
+                }
+            }
+            byte[] bytes = output.toByteArray();
+            if (bytes.length == 0) return null;
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            if (connection != null) connection.disconnect();
         }
     }
 
@@ -866,6 +994,8 @@ public class EpgMainActivity extends MainActivity {
         handler.removeCallbacks(injector);
         handler.removeCallbacks(sidebarWatcher);
         epgBackground.shutdownNow();
+        logoBackground.shutdownNow();
+        logoCache.clear();
         super.onDestroy();
     }
 
@@ -873,11 +1003,13 @@ public class EpgMainActivity extends MainActivity {
         final String name;
         final String url;
         final String category;
+        final String logo;
 
-        ChannelItem(String name, String url, String category) {
+        ChannelItem(String name, String url, String category, String logo) {
             this.name = name;
             this.url = url;
             this.category = category;
+            this.logo = logo == null ? "" : logo;
         }
     }
 }

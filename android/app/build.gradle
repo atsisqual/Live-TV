@@ -17,8 +17,8 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        versionCode 34
-        versionName '1.6.7'
+        versionCode 35
+        versionName '1.6.8'
     }
 
     buildFeatures {
