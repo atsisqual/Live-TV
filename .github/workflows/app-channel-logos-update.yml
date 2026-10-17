@@ -1,0 +1,33 @@
+name: Apply channel logos update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/app-channel-logos-update.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: python .github/scripts/app_channel_logos_patch.py
+
+      - name: Commit update
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android
+          git diff --cached --check
+          git commit -m "Add channel logos and fix launcher safe area"
+          git push origin HEAD:main
