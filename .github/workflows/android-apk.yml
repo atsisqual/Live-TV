@@ -63,7 +63,7 @@ jobs:
           test -n "$APK_VERSION_CODE"
           echo "APK_VERSION=$APK_VERSION" >> "$GITHUB_ENV"
           echo "APK_VERSION_CODE=$APK_VERSION_CODE" >> "$GITHUB_ENV"
-          echo "Resolved Live TV v${APK_VERSION} (code ${APK_VERSION_CODE})"
+          echo "Resolved TV do Zé v${APK_VERSION} (code ${APK_VERSION_CODE})"
 
       - name: Prepare release signing
         shell: bash
@@ -132,7 +132,7 @@ jobs:
             "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v${APK_VERSION}.apk",
             "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
             "signedRelease": true,
-            "notes": "Corrige a ativação do Modo player direto no Android, mantendo a seleção de player por canal e o áudio automático no wideiptv.top. Auto-update ativo.",
+            "notes": "TV do Zé: novo nome e ícone, opção para desligar a procura automática de atualizações e remoção do overlay LIVE do wideiptv.top quando é um elemento do player. Mantém seleção de player e áudio automático.",
             "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF
@@ -143,6 +143,6 @@ jobs:
           git add "downloads/Live-TV-v${APK_VERSION}.apk" downloads/Live-TV-latest.apk downloads/version.json
 
           if ! git diff --cached --quiet; then
-            git commit -m "Publish Live TV v${APK_VERSION} APK"
+            git commit -m "Publish TV do Zé v${APK_VERSION} APK"
             git push origin HEAD:gh-pages
           fi
