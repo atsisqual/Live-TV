@@ -1,0 +1,102 @@
+name: Fix direct mode bridge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-direct-mode-bridge.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch JavaScript bridge and release version
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          java_path = Path('android/app/src/main/java/com/atsisqual/livetv/EpgMainActivity.java')
+          text = java_path.read_text(encoding='utf-8')
+
+          old_remember = '''        @JavascriptInterface
+                  public void rememberChannel(String value) {
+                      WebView current = webView;
+                      if (current == null || !isHome(current.getUrl())) return;
+                      handler.post(() -> EpgMainActivity.this.rememberChannel(value));
+                  }
+          '''
+          new_remember = '''        @JavascriptInterface
+                  public void rememberChannel(String value) {
+                      WebView current = webView;
+                      if (current == null) return;
+                      current.post(() -> {
+                          if (!isHome(current.getUrl())) return;
+                          EpgMainActivity.this.rememberChannel(value);
+                      });
+                  }
+          '''
+
+          old_enable = '''        @JavascriptInterface
+                  public void enableDirectMode(String value) {
+                      WebView current = webView;
+                      if (current == null || !isHome(current.getUrl())) return;
+                      handler.post(() -> enableDirectPlayerMode(value));
+                  }
+          '''
+          new_enable = '''        @JavascriptInterface
+                  public void enableDirectMode(String value) {
+                      WebView current = webView;
+                      if (current == null) return;
+                      current.post(() -> {
+                          if (!isHome(current.getUrl())) return;
+                          enableDirectPlayerMode(value);
+                      });
+                  }
+          '''
+
+          if old_remember not in text:
+              raise SystemExit('rememberChannel bridge block not found; refusing unsafe patch')
+          if old_enable not in text:
+              raise SystemExit('enableDirectMode bridge block not found; refusing unsafe patch')
+
+          text = text.replace(old_remember, new_remember, 1)
+          text = text.replace(old_enable, new_enable, 1)
+          java_path.write_text(text, encoding='utf-8')
+
+          gradle_path = Path('android/app/build.gradle')
+          gradle = gradle_path.read_text(encoding='utf-8')
+          if "versionCode 32" not in gradle or "versionName '1.6.5'" not in gradle:
+              raise SystemExit('Expected v1.6.5/versionCode 32 before release bump')
+          gradle = gradle.replace('versionCode 32', 'versionCode 33', 1)
+          gradle = gradle.replace("versionName '1.6.5'", "versionName '1.6.6'", 1)
+          gradle_path.write_text(gradle, encoding='utf-8')
+
+          workflow_path = Path('.github/workflows/android-apk.yml')
+          workflow = workflow_path.read_text(encoding='utf-8')
+          old_notes = 'Portugal volta a usar APITOTAL sem redirecionamento automático para DLive. Player 1 mantém wideiptv.top e a app tenta iniciar o áudio sem mute. Auto-update ativo.'
+          new_notes = 'Corrige a ativação do Modo player direto no Android, mantendo a seleção de player por canal e o áudio automático no wideiptv.top. Auto-update ativo.'
+          if old_notes not in workflow:
+              raise SystemExit('Expected v1.6.5 release notes not found')
+          workflow = workflow.replace(old_notes, new_notes, 1)
+          workflow_path.write_text(workflow, encoding='utf-8')
+          PY
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/app/src/main/java/com/atsisqual/livetv/EpgMainActivity.java android/app/build.gradle .github/workflows/android-apk.yml
+          git diff --cached --check
+          git commit -m "Fix direct player mode bridge and release v1.6.6"
+          git push origin HEAD:main
