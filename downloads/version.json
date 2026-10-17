@@ -1,9 +1,9 @@
 {
-  "versionCode": 24,
-  "versionName": "1.5.7",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.7.apk",
+  "versionCode": 25,
+  "versionName": "1.5.8",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.5.8.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "Nova navegação no player: menu lateral direito com scroll de canais, canal atual destacado e botão Voltar fixo no topo. O fullscreen continua a usar o ecrã completo.",
-  "publishedAt": "2026-10-17T13:03:15Z"
+  "notes": "Menu lateral mais compacto, seleção do canal corrigida e novo Modo player direto: arranque no último canal sem Voltar aos canais. O update checker continua ativo também neste modo.",
+  "publishedAt": "2026-10-17T13:03:29Z"
 }
