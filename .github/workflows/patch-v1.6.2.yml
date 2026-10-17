@@ -1,0 +1,74 @@
+name: Patch v1.6.2 DLive ads
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-v1.6.2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply v1.6.2 hotfix atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly 1 occurrence, found {count}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # JS/document-start blocker: remove the observed DLive ad visit links before a tap.
+          replace_once(
+              'android/app/src/main/java/com/atsisqual/livetv/AdCleaner.java',
+              "            'protrafficinspector.com'",
+              "            'protrafficinspector.com','cvjqrgyifkets.online','jashxfsiqkksm.space','fensi.shop'"
+          )
+
+          # Native WebView blocker: defense in depth for requests/navigation that escape the DOM cleaner.
+          replace_once(
+              'android/app/src/main/java/com/atsisqual/livetv/MainActivity.java',
+              '            "protrafficinspector.com"',
+              '            "protrafficinspector.com",\n            "cvjqrgyifkets.online",\n            "jashxfsiqkksm.space",\n            "fensi.shop"'
+          )
+
+          # App version.
+          replace_once('android/app/build.gradle', '        versionCode 28', '        versionCode 29')
+          replace_once('android/app/build.gradle', "        versionName '1.6.1'", "        versionName '1.6.2'")
+
+          # Release workflow metadata.
+          replace_once('.github/workflows/android-apk.yml', "  APK_VERSION: '1.6.1'", "  APK_VERSION: '1.6.2'")
+          replace_once('.github/workflows/android-apk.yml', "  APK_VERSION_CODE: '28'", "  APK_VERSION_CODE: '29'")
+          replace_once('.github/workflows/android-apk.yml', '          name: Live-TV-v1.6.1', '          name: Live-TV-v1.6.2')
+          replace_once('.github/workflows/android-apk.yml', '          path: Live-TV-v1.6.1.apk', '          path: Live-TV-v1.6.2.apk')
+          replace_once(
+              '.github/workflows/android-apk.yml',
+              '            "notes": "DLive passa a ser usado automaticamente nos canais Portugal mapeados, sem reimportar a lista. Bloqueio reforçado de popunders, links _blank e cortinas transparentes fullscreen. Auto-update ativo.",',
+              '            "notes": "DLive direto nos canais Portugal. Bloqueio adicional dos redirects de publicidade observados em dlive/dlhd, mantendo o embed do player intacto. Auto-update ativo.",'
+          )
+          PY
+
+          rm -f .github/workflows/patch-v1.6.2.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git diff --cached --quiet && { echo 'No changes to commit'; exit 1; }
+          git commit -m "Release v1.6.2 with observed DLive ad blocking"
+          git push origin HEAD:main
