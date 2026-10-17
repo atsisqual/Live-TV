@@ -54,6 +54,7 @@ public class EpgMainActivity extends MainActivity {
     private static final int MAX_XMLTV_BYTES = 12 * 1024 * 1024;
     private static final int MAX_LOGO_BYTES = 768 * 1024;
     private static final int SIDEBAR_WIDTH_DP = 216;
+    private static final int MAX_CHANNEL_CAPTURE_RETRIES = 8;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService epgBackground = Executors.newSingleThreadExecutor();
@@ -82,72 +83,13 @@ public class EpgMainActivity extends MainActivity {
     private boolean sidebarBuilt;
     private boolean sidebarShowing;
     private boolean channelCaptureRunning;
+    private boolean homeScriptsInjected;
     private boolean directPlayerMode;
     private boolean directLaunchPending;
     private boolean directUpdateDialogShown;
+    private int channelCaptureRetryCount;
     private long lastChannelCaptureAt;
     private String selectedChannelUrl = "";
-
-    private final Runnable injector = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                ensureWebView();
-                if (webView != null) {
-                    if (!bridgeInstalled) {
-                        webView.addJavascriptInterface(new EpgBridge(), "LiveTvEpg");
-                        bridgeInstalled = true;
-                    }
-                    String url = webView.getUrl();
-                    if (isHome(url)) {
-                        webView.evaluateJavascript(loadEpgScript(), null);
-                        webView.evaluateJavascript(loadEpgUrlScript(), null);
-                        webView.evaluateJavascript(loadDirectModeScript(), null);
-                    }
-                }
-            } catch (Exception ignored) {
-                // Optional enhancements must never interfere with channel playback.
-            } finally {
-                handler.postDelayed(this, 1200);
-            }
-        }
-    };
-
-    private final Runnable sidebarWatcher = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                ensureWebView();
-                if (webView != null) {
-                    ensureSidebar();
-
-                    if (legacyBackButton != null) legacyBackButton.setVisibility(View.GONE);
-                    if (sidebarBackButton != null) {
-                        sidebarBackButton.setVisibility(directPlayerMode ? View.GONE : View.VISIBLE);
-                    }
-                    if (statusHomeButton != null && directPlayerMode) {
-                        statusHomeButton.setVisibility(View.GONE);
-                    }
-
-                    boolean fullscreen = webView.getVisibility() != View.VISIBLE;
-                    String url = webView.getUrl();
-                    boolean home = isHome(url);
-
-                    if (fullscreen || home) {
-                        hideSidebar();
-                        if (home) captureChannelsIfNeeded();
-                    } else {
-                        showSidebar();
-                        refreshActiveChannelIfNeeded();
-                    }
-                }
-            } catch (Exception ignored) {
-                // Sidebar is optional and must never interrupt playback.
-            } finally {
-                handler.postDelayed(this, 180);
-            }
-        }
-    };
 
     @Override
     protected void onCreate(Bundle state) {
@@ -170,10 +112,25 @@ public class EpgMainActivity extends MainActivity {
         }
 
         directLaunchPending = directPlayerMode;
-        handler.postDelayed(injector, 120);
-        handler.postDelayed(sidebarWatcher, 180);
+        initializeEventDrivenUi();
         if (directPlayerMode && isAutoUpdateEnabled()) handler.postDelayed(this::checkDirectModeUpdate, 1400);
         if (directLaunchPending) handler.postDelayed(this::launchDirectPlayerFallback, 1100);
+    }
+
+    private void initializeEventDrivenUi() {
+        ensureWebView();
+        ensureBridgeInstalled();
+        ensureSidebar();
+        applyPersistentPlayerChrome();
+
+        if (webView == null) return;
+        String url = webView.getUrl();
+        if (isHome(url)) {
+            hideSidebar();
+        } else {
+            showSidebar();
+            confirmLoadedChannel(url);
+        }
     }
 
     private void ensureWebView() {
@@ -181,6 +138,119 @@ public class EpgMainActivity extends MainActivity {
         if (webView != null && playerRoot == null && webView.getParent() instanceof FrameLayout) {
             playerRoot = (FrameLayout) webView.getParent();
         }
+    }
+
+    private void ensureBridgeInstalled() {
+        if (bridgeInstalled || webView == null) return;
+        webView.addJavascriptInterface(new EpgBridge(), "LiveTvEpg");
+        bridgeInstalled = true;
+    }
+
+    private void applyPersistentPlayerChrome() {
+        if (legacyBackButton != null) legacyBackButton.setVisibility(View.GONE);
+        if (sidebarBackButton != null) {
+            sidebarBackButton.setVisibility(directPlayerMode ? View.GONE : View.VISIBLE);
+        }
+        if (statusHomeButton != null && directPlayerMode) {
+            statusHomeButton.setVisibility(View.GONE);
+        }
+    }
+
+    @Override
+    protected void onLiveTvPageStarted(WebView view, String url) {
+        super.onLiveTvPageStarted(view, url);
+        ensureWebView();
+        ensureBridgeInstalled();
+        ensureSidebar();
+        applyPersistentPlayerChrome();
+
+        if (isHome(url)) {
+            homeScriptsInjected = false;
+            channelCaptureRetryCount = 0;
+            hideSidebar();
+        } else {
+            showSidebar();
+            confirmLoadedChannel(url);
+        }
+    }
+
+    @Override
+    protected void onLiveTvPageCommitVisible(WebView view, String url) {
+        super.onLiveTvPageCommitVisible(view, url);
+        ensureWebView();
+        ensureSidebar();
+        applyPersistentPlayerChrome();
+
+        if (isHome(url)) {
+            hideSidebar();
+        } else {
+            showSidebar();
+            confirmLoadedChannel(url);
+        }
+    }
+
+    @Override
+    protected void onLiveTvPageFinished(WebView view, String url) {
+        super.onLiveTvPageFinished(view, url);
+        ensureWebView();
+        ensureBridgeInstalled();
+        ensureSidebar();
+        applyPersistentPlayerChrome();
+
+        if (isHome(url)) {
+            hideSidebar();
+            injectHomeEnhancementsIfNeeded();
+        } else {
+            showSidebar();
+            confirmLoadedChannel(url);
+        }
+    }
+
+    @Override
+    protected void onLiveTvFullscreenChanged(boolean isFullscreen) {
+        super.onLiveTvFullscreenChanged(isFullscreen);
+        ensureWebView();
+        ensureSidebar();
+        if (isFullscreen || webView == null || isHome(webView.getUrl())) {
+            hideSidebar();
+        } else {
+            showSidebar();
+            confirmLoadedChannel(webView.getUrl());
+        }
+    }
+
+    private void injectHomeEnhancementsIfNeeded() {
+        if (homeScriptsInjected || webView == null || !isHome(webView.getUrl())) return;
+        homeScriptsInjected = true;
+        channelCaptureRetryCount = 0;
+
+        try {
+            String epg = loadEpgScript();
+            String epgUrl = loadEpgUrlScript();
+            String direct = loadDirectModeScript();
+
+            webView.evaluateJavascript(epg, ignored -> {
+                if (webView == null || !isHome(webView.getUrl())) return;
+                webView.evaluateJavascript(epgUrl, ignored2 -> {
+                    if (webView == null || !isHome(webView.getUrl())) return;
+                    webView.evaluateJavascript(direct, ignored3 -> {
+                        if (webView == null || !isHome(webView.getUrl())) return;
+                        scheduleChannelCaptureRetry(80L);
+                    });
+                });
+            });
+        } catch (Exception ignored) {
+            homeScriptsInjected = false;
+        }
+    }
+
+    private void scheduleChannelCaptureRetry(long delayMs) {
+        if (channelCaptureRetryCount >= MAX_CHANNEL_CAPTURE_RETRIES) return;
+        channelCaptureRetryCount += 1;
+        handler.postDelayed(() -> {
+            if (webView == null || !isHome(webView.getUrl())) return;
+            captureChannelsIfNeeded();
+        }, delayMs);
     }
 
     private boolean isHome(String url) {
@@ -392,7 +462,10 @@ public class EpgMainActivity extends MainActivity {
         if (webView == null || !isHome(webView.getUrl()) || channelCaptureRunning) return;
 
         long now = System.currentTimeMillis();
-        if (now - lastChannelCaptureAt < 700) return;
+        if (now - lastChannelCaptureAt < 250) {
+            scheduleChannelCaptureRetry(280L);
+            return;
+        }
 
         lastChannelCaptureAt = now;
         channelCaptureRunning = true;
@@ -412,7 +485,10 @@ public class EpgMainActivity extends MainActivity {
             channelCaptureRunning = false;
             try {
                 JSONObject result = new JSONObject(value == null || value.trim().isEmpty() ? "{}" : value);
-                if (!result.optBoolean("ready", false)) return;
+                if (!result.optBoolean("ready", false)) {
+                    scheduleChannelCaptureRetry(320L);
+                    return;
+                }
 
                 JSONArray items = result.optJSONArray("items");
                 channels.clear();
@@ -440,8 +516,9 @@ public class EpgMainActivity extends MainActivity {
 
                 renderChannelList();
                 maybeLaunchDirectPlayer();
+                if (channels.isEmpty()) scheduleChannelCaptureRetry(380L);
             } catch (Exception ignored) {
-                // A stale/partial JS result is harmless; the next pass retries.
+                scheduleChannelCaptureRetry(380L);
             }
         });
     }
@@ -458,18 +535,27 @@ public class EpgMainActivity extends MainActivity {
         maybeLaunchDirectPlayer();
     }
 
-    private void refreshActiveChannelIfNeeded() {
-        if (!sidebarShowing || webView == null || !selectedChannelUrl.isEmpty()) return;
-        String active = currentStreamIdentity();
-        if (active.isEmpty()) return;
+    private void confirmLoadedChannel(String activeUrl) {
+        if (webView == null || activeUrl == null || activeUrl.trim().isEmpty() || isHome(activeUrl)) return;
+        String active = activeUrl.trim();
 
         for (ChannelItem item : channels) {
-            if (matchesActiveChannel(item.url, active)) {
+            if (!matchesActiveChannel(item.url, active)) continue;
+            if (!matchesActiveChannel(item.url, selectedChannelUrl)) {
                 selectedChannelUrl = item.url;
-                renderChannelList();
-                return;
+                persistConfirmedChannel(item.url);
+                if (sidebarShowing) renderChannelList();
             }
+            return;
         }
+    }
+
+    private void persistConfirmedChannel(String value) {
+        String url = value == null ? "" : value.trim();
+        if (!isValidChannelUrl(url)) return;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString(PREF_LAST_CHANNEL, url)
+                .apply();
     }
 
     private String currentStreamIdentity() {
@@ -724,12 +810,9 @@ public class EpgMainActivity extends MainActivity {
     private void openChannelFromSidebar(ChannelItem item) {
         if (webView == null || item == null || item.url.isEmpty()) return;
 
-        String active = selectedChannelUrl.isEmpty() ? currentStreamIdentity() : selectedChannelUrl;
-        if (matchesActiveChannel(item.url, active)) return;
-
-        rememberChannel(item.url);
+        // Always load the row that was tapped. If it is already active this is an explicit retry.
+        // Selection/persistence is only confirmed by the WebView page-start/commit events.
         webView.loadUrl(item.url);
-        renderChannelList();
     }
 
     private void rememberChannel(String value) {
@@ -1022,8 +1105,7 @@ public class EpgMainActivity extends MainActivity {
 
     @Override
     protected void onDestroy() {
-        handler.removeCallbacks(injector);
-        handler.removeCallbacks(sidebarWatcher);
+        handler.removeCallbacksAndMessages(null);
         epgBackground.shutdownNow();
         logoBackground.shutdownNow();
         logoCache.clear();
