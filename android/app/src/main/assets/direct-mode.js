@@ -94,10 +94,10 @@
     return externalPlayerUrl(item);
   }
 
-  function installResolvedPlayerItems() {
+  function installResolvedProviderItems() {
     try {
       if (typeof window.allItems !== 'function') return false;
-      if (window.allItems.__liveTvPlayerResolved) return true;
+      if (window.allItems.__liveTvProviderRegistryResolved) return true;
 
       var originalAllItems = window.allItems;
       var wrappedAllItems = function () {
@@ -112,8 +112,8 @@
         });
       };
 
-      wrappedAllItems.__liveTvPlayerResolved = true;
-      wrappedAllItems.__liveTvOriginal = originalAllItems;
+      wrappedAllItems.__liveTvProviderRegistryResolved = true;
+      wrappedAllItems.__liveTvProviderRegistryOriginal = originalAllItems;
       window.allItems = wrappedAllItems;
       return true;
     } catch (e) {
@@ -121,11 +121,11 @@
     }
   }
 
-  if (!installResolvedPlayerItems()) {
+  if (!installResolvedProviderItems()) {
     var installAttempts = 0;
     var installTimer = setInterval(function () {
       installAttempts += 1;
-      if (installResolvedPlayerItems() || installAttempts >= 40) {
+      if (installResolvedProviderItems() || installAttempts >= 40) {
         clearInterval(installTimer);
       }
     }, 250);
