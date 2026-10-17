@@ -1,0 +1,9 @@
+{
+  "versionCode": 15,
+  "versionName": "1.4.3",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.4.3.apk",
+  "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
+  "signedRelease": false,
+  "notes": "Novo icon e splash, update checker e estados nativos de loading, erro e retry.",
+  "publishedAt": "2026-10-17T08:33:23Z"
+}
