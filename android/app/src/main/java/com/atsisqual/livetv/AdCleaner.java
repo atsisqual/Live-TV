@@ -6,6 +6,7 @@ import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -355,47 +356,61 @@ final class AdCleaner {
 
           const start = () => {
             if (!document.documentElement) { setTimeout(start, 10); return; }
-            cleanElement(document.documentElement);
+            if (!IS_WIDEIPTV) cleanElement(document.documentElement);
             cleanDlive(document);
             forceSound(document.documentElement);
             hideWideIptvLiveBadge(document.documentElement);
             selectRequestedPlayer();
             hidePlayerChooser(document.documentElement);
             maybePromoteRdembed(document.documentElement);
+
+            const pendingNodes = new Set();
+            let mutationTimer = null;
+            const processNode = node => {
+              if (!node || node.nodeType !== 1) return;
+              if (!IS_WIDEIPTV) {
+                cleanElement(node);
+                cleanDlive(node);
+              }
+              forceSound(node);
+              hideWideIptvLiveBadge(node);
+              selectRequestedPlayer();
+              hidePlayerChooser(node);
+              maybePromoteRdembed(node);
+            };
+            const flushMutations = () => {
+              mutationTimer = null;
+              const nodes = [...pendingNodes];
+              pendingNodes.clear();
+              nodes.forEach(processNode);
+            };
+            const enqueueNode = node => {
+              if (!node || node.nodeType !== 1) return;
+              pendingNodes.add(node);
+              if (mutationTimer !== null) return;
+              mutationTimer = setTimeout(flushMutations, IS_WIDEIPTV ? 45 : 20);
+            };
+
             new MutationObserver(mutations => {
               for (const mutation of mutations) {
-                if (mutation.type === 'attributes') {
-                  cleanElement(mutation.target);
-                  cleanDlive(mutation.target);
-                  forceSound(mutation.target);
-                  hideWideIptvLiveBadge(mutation.target);
-                  selectRequestedPlayer();
-                  hidePlayerChooser(mutation.target);
-                  if (mutation.attributeName === 'src') maybePromoteRdembed(mutation.target);
-                }
-                for (const node of mutation.addedNodes || []) {
-                  cleanElement(node);
-                  cleanDlive(node);
-                  forceSound(node);
-                  hideWideIptvLiveBadge(node);
-                  selectRequestedPlayer();
-                  hidePlayerChooser(node);
-                  maybePromoteRdembed(node);
-                }
+                if (mutation.type === 'attributes') enqueueNode(mutation.target);
+                for (const node of mutation.addedNodes || []) enqueueNode(node);
               }
             }).observe(document.documentElement, {
-              childList:true,subtree:true,attributes:true,
-              attributeFilter:['href','src','onclick','target','style','class','data-href','data-url','data-link']
+              childList:true,
+              subtree:true,
+              attributes:true,
+              attributeFilter:['href','src','onclick','target','data-href','data-url','data-link']
             });
+
             if (IS_DLIVE) setInterval(() => cleanDlive(document), 1200);
             if (IS_WIDEIPTV) {
               let soundAttempts = 0;
               const soundTimer = setInterval(() => {
                 forceSound(document);
-                hideWideIptvLiveBadge(document);
                 soundAttempts++;
-                if (soundAttempts >= 20) clearInterval(soundTimer);
-              }, 500);
+                if (soundAttempts >= 15) clearInterval(soundTimer);
+              }, 1000);
             }
           };
 
@@ -403,8 +418,80 @@ final class AdCleaner {
         })();
         """;
 
+    /*
+     * Resolve APITOTAL Player N at document start on the local channel grid. This makes the
+     * URL captured by the native sidebar deterministic instead of depending on the later
+     * optional direct-mode injector winning a timing race.
+     */
+    private static final String HOME_PLAYER_SCRIPT = """
+        (() => {
+          'use strict';
+          if (location.protocol !== 'file:') return;
+
+          const playerNumber = value => {
+            const n = parseInt(value, 10);
+            return Number.isFinite(n) && n >= 1 && n <= 20 ? n : 0;
+          };
+
+          const resolvePlayerUrl = item => {
+            try {
+              if (!item || !item.url) return '';
+              const raw = String(item.url || '');
+              const player = playerNumber(item.player);
+              if (!player) return raw;
+              const url = new URL(raw);
+              const host = String(url.hostname || '').toLowerCase();
+              if (host !== 'apitotal.net' && !host.endsWith('.apitotal.net')) return raw;
+              url.hash = 'livetv-player=' + player;
+              return url.href;
+            } catch (_) {
+              return String(item && item.url ? item.url : '');
+            }
+          };
+
+          const install = () => {
+            try {
+              if (typeof window.allItems !== 'function') return false;
+              if (window.allItems.__liveTvPlayerResolved) return true;
+
+              const originalAllItems = window.allItems;
+              const wrappedAllItems = function() {
+                const items = originalAllItems.apply(this, arguments);
+                if (!Array.isArray(items)) return items;
+                return items.map(item => {
+                  if (!item || !item.url) return item;
+                  const resolved = resolvePlayerUrl(item);
+                  if (!resolved || resolved === String(item.url)) return item;
+                  return Object.assign({}, item, {url: resolved});
+                });
+              };
+
+              wrappedAllItems.__liveTvPlayerResolved = true;
+              wrappedAllItems.__liveTvOriginal = originalAllItems;
+              window.allItems = wrappedAllItems;
+              return true;
+            } catch (_) {
+              return false;
+            }
+          };
+
+          let attempts = 0;
+          const retry = () => {
+            if (install()) return;
+            attempts++;
+            if (attempts < 200) setTimeout(retry, 25);
+          };
+          retry();
+        })();
+        """;
+
     static void install(WebView webView) {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
         WebViewCompat.addDocumentStartJavaScript(webView, SCRIPT, PLAYER_ORIGINS);
+        WebViewCompat.addDocumentStartJavaScript(
+                webView,
+                HOME_PLAYER_SCRIPT,
+                Collections.singleton("*")
+        );
     }
 }
