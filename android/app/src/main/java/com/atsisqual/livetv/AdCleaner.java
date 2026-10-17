@@ -67,7 +67,7 @@ final class AdCleaner {
 
           const REQUESTED_PLAYER = (() => {
             try {
-              const m = String(location.hash || '').match(/(?:^#|[&#])livetv-player=(\d{1,2})(?:&|$)/i);
+              const m = String(location.hash || '').match(/(?:^#|[&#])livetv-player=(\\d{1,2})(?:&|$)/i);
               const n = m ? parseInt(m[1], 10) : 1;
               return Number.isFinite(n) && n >= 1 && n <= 20 ? n : 1;
             } catch (_) { return 1; }
@@ -121,7 +121,7 @@ final class AdCleaner {
             let chooser = null;
             try {
               chooser = [...document.querySelectorAll('.v-select,.v-input,[role=\"combobox\"]')].find(el => {
-                const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
+                const t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();
                 return t.includes('PLAYER') && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'));
               }) || null;
             } catch (_) {}
@@ -129,7 +129,7 @@ final class AdCleaner {
 
             const wanted = 'PLAYER ' + REQUESTED_PLAYER;
             try {
-              const current = (chooser.innerText || chooser.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
+              const current = (chooser.innerText || chooser.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();
               if (current.includes(wanted)) {
                 playerSelectionDone = true;
                 return true;
@@ -147,7 +147,7 @@ final class AdCleaner {
               try {
                 const options = [...document.querySelectorAll('[role=\"option\"],.v-list-item,.v-list-item-title')];
                 const option = options.find(el => {
-                  const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
+                  const t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();
                   return t === wanted;
                 });
                 if (option) {
@@ -182,7 +182,7 @@ final class AdCleaner {
             for (const el of candidates) {
               try {
                 const t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();
-                if (/PLAYER\s+\d+/.test(t) && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'))) {
+                if (/PLAYER\\s+\\d+/.test(t) && (t.includes('ESCOLHA OUTRO PLAYER') || t.includes('TRAVOU'))) {
                   disable(el.closest('.v-input') || el);
                 }
               } catch (_) {}
