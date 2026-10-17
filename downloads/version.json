@@ -1,9 +1,9 @@
 {
-  "versionCode": 27,
-  "versionName": "1.6.0",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.0.apk",
+  "versionCode": 28,
+  "versionName": "1.6.1",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.1.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
-  "notes": "Novo teste DLive: lista Portugal por channel ID, bloqueio de popunders, links _blank e cortinas transparentes fullscreen. Auto-update mantém-se ativo.",
-  "publishedAt": "2026-10-17T13:49:59Z"
+  "notes": "DLive passa a ser usado automaticamente nos canais Portugal mapeados, sem reimportar a lista. Bloqueio reforçado de popunders, links _blank e cortinas transparentes fullscreen. Auto-update ativo.",
+  "publishedAt": "2026-10-17T13:50:42Z"
 }
