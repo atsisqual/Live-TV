@@ -356,6 +356,46 @@ final class AdCleaner {
 
           const start = () => {
             if (!document.documentElement) { setTimeout(start, 10); return; }
+
+            let playbackStable = false;
+            let dliveSweepTimer = null;
+            let soundTimer = null;
+
+            const stopWarmupTimers = () => {
+              if (dliveSweepTimer !== null) {
+                clearInterval(dliveSweepTimer);
+                dliveSweepTimer = null;
+              }
+              if (soundTimer !== null) {
+                clearInterval(soundTimer);
+                soundTimer = null;
+              }
+            };
+
+            const markPlaybackStable = () => {
+              if (playbackStable) return;
+              playbackStable = true;
+              stopWarmupTimers();
+            };
+
+            const watchPlayback = root => {
+              const scope = root && root.querySelectorAll ? root : document;
+              const media = [];
+              try {
+                if (scope.matches && scope.matches('video,audio')) media.push(scope);
+                scope.querySelectorAll('video,audio').forEach(m => media.push(m));
+              } catch (_) {}
+              media.forEach(m => {
+                try {
+                  if (!m.dataset.livetvCleanerWatch) {
+                    m.dataset.livetvCleanerWatch = '1';
+                    m.addEventListener('playing', markPlaybackStable, {once:true});
+                  }
+                  if (!m.paused && m.readyState >= 2) markPlaybackStable();
+                } catch (_) {}
+              });
+            };
+
             if (!IS_WIDEIPTV) cleanElement(document.documentElement);
             cleanDlive(document);
             forceSound(document.documentElement);
@@ -363,6 +403,7 @@ final class AdCleaner {
             selectRequestedPlayer();
             hidePlayerChooser(document.documentElement);
             maybePromoteRdembed(document.documentElement);
+            watchPlayback(document.documentElement);
 
             const pendingNodes = new Set();
             let mutationTimer = null;
@@ -377,6 +418,7 @@ final class AdCleaner {
               selectRequestedPlayer();
               hidePlayerChooser(node);
               maybePromoteRdembed(node);
+              watchPlayback(node);
             };
             const flushMutations = () => {
               mutationTimer = null;
@@ -403,13 +445,28 @@ final class AdCleaner {
               attributeFilter:['href','src','onclick','target','data-href','data-url','data-link']
             });
 
-            if (IS_DLIVE) setInterval(() => cleanDlive(document), 1200);
-            if (IS_WIDEIPTV) {
+            if (IS_DLIVE && !playbackStable) {
+              let dliveSweeps = 0;
+              dliveSweepTimer = setInterval(() => {
+                cleanDlive(document);
+                watchPlayback(document);
+                dliveSweeps++;
+                if (playbackStable || dliveSweeps >= 8) {
+                  clearInterval(dliveSweepTimer);
+                  dliveSweepTimer = null;
+                }
+              }, 1200);
+            }
+            if (IS_WIDEIPTV && !playbackStable) {
               let soundAttempts = 0;
-              const soundTimer = setInterval(() => {
+              soundTimer = setInterval(() => {
                 forceSound(document);
+                watchPlayback(document);
                 soundAttempts++;
-                if (soundAttempts >= 15) clearInterval(soundTimer);
+                if (playbackStable || soundAttempts >= 8) {
+                  clearInterval(soundTimer);
+                  soundTimer = null;
+                }
               }, 1000);
             }
           };
