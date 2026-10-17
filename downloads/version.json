@@ -5,5 +5,5 @@
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
   "notes": "Suporte a player por canal no JSON (player: N): a app seleciona a alternativa API Total pedida antes de ocultar o seletor. O update checker continua ativo.",
-  "publishedAt": "2026-10-17T13:23:40Z"
+  "publishedAt": "2026-10-17T13:44:33Z"
 }
