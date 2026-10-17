@@ -1,0 +1,11 @@
+{
+  "versionCode": 1,
+  "versionName": "0.1.0",
+  "packageName": "com.atsisqual.livetv.m3utest",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/m3u-test/TV-do-Ze-M3U-Test-v0.1.0.apk",
+  "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/m3u-test/TV-do-Ze-M3U-Test-latest.apk",
+  "autoUpdate": false,
+  "playlistSource": "https://github.com/LITUATUI/M3UPT",
+  "notes": "App de testes separada. Lista base M3UPT embebida no APK e player nativo HLS/DASH com headers M3U.",
+  "publishedAt": "2026-10-17T17:34:21Z"
+}
