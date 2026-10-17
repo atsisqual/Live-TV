@@ -4,6 +4,55 @@
   if (window.__liveTvDirectModeUi) return;
   window.__liveTvDirectModeUi = true;
 
+  function resolvedPlayerUrl(item) {
+    try {
+      if (!item || !item.url) return '';
+      if (typeof playerUrl === 'function') {
+        return String(playerUrl(item) || item.url || '');
+      }
+      return String(item.url || '');
+    } catch (e) {
+      return String(item && item.url ? item.url : '');
+    }
+  }
+
+  function installResolvedPlayerItems() {
+    try {
+      if (typeof window.allItems !== 'function') return false;
+      if (window.allItems.__liveTvPlayerResolved) return true;
+
+      var originalAllItems = window.allItems;
+      var wrappedAllItems = function () {
+        var items = originalAllItems.apply(this, arguments);
+        if (!Array.isArray(items)) return items;
+
+        return items.map(function (item) {
+          if (!item || !item.url) return item;
+          var resolved = resolvedPlayerUrl(item);
+          if (!resolved || resolved === String(item.url)) return item;
+          return Object.assign({}, item, { url: resolved });
+        });
+      };
+
+      wrappedAllItems.__liveTvPlayerResolved = true;
+      wrappedAllItems.__liveTvOriginal = originalAllItems;
+      window.allItems = wrappedAllItems;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  if (!installResolvedPlayerItems()) {
+    var installAttempts = 0;
+    var installTimer = setInterval(function () {
+      installAttempts += 1;
+      if (installResolvedPlayerItems() || installAttempts >= 40) {
+        clearInterval(installTimer);
+      }
+    }, 250);
+  }
+
   function lastChannelItem() {
     try {
       if (typeof allItems !== 'function' || typeof loadRecent !== 'function' || typeof itemKey !== 'function') return null;
@@ -20,8 +69,9 @@
 
   function remember(item) {
     try {
-      if (item && item.url && window.LiveTvEpg && typeof window.LiveTvEpg.rememberChannel === 'function') {
-        window.LiveTvEpg.rememberChannel(String(item.url));
+      var url = resolvedPlayerUrl(item);
+      if (url && window.LiveTvEpg && typeof window.LiveTvEpg.rememberChannel === 'function') {
+        window.LiveTvEpg.rememberChannel(url);
       }
     } catch (e) {}
   }
@@ -49,7 +99,7 @@
         return;
       }
       if (typeof closeSheet === 'function') closeSheet();
-      window.LiveTvEpg.enableDirectMode(String(item.url));
+      window.LiveTvEpg.enableDirectMode(resolvedPlayerUrl(item));
     } catch (e) {
       if (typeof showToast === 'function') showToast('Não foi possível ativar o modo direto');
     }
