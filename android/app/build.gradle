@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.16 restores Canal 11 through APITOTAL while keeping v1.6.15 sidebar synchronization.
-        versionCode 43
-        versionName '1.6.16'
+        // v1.6.17 replaces player/sidebar polling with WebView lifecycle events.
+        versionCode 44
+        versionName '1.6.17'
     }
 
     buildFeatures {

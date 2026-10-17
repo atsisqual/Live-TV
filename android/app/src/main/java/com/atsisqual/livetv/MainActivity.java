@@ -11,6 +11,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
@@ -55,6 +57,7 @@ public class MainActivity extends Activity {
             "https://atsisqual.github.io/Live-TV/downloads/version.json";
     private static final String PREFS = "live-tv-settings";
     private static final String PREF_AUTO_UPDATE = "auto-update-enabled";
+    private static final String PERF_TAG = "LiveTvPerf";
 
     private static final Set<String> BLOCKED_HOSTS = unmodifiableSet(
             "histats.com",
@@ -119,6 +122,8 @@ public class MainActivity extends Activity {
     private boolean mainFrameFailed;
     private boolean updateDialogShown;
     private UpdateInfo pendingUpdate;
+    private long navigationStartedAt;
+    private String navigationUrl = "";
 
     @Override
     protected void onCreate(Bundle state) {
@@ -273,6 +278,7 @@ public class MainActivity extends Activity {
 
         AdCleaner.install(web);
         web.addJavascriptInterface(new AppSettingsBridge(), "LiveTvSettings");
+        web.addJavascriptInterface(new PlaybackPerfBridge(), "LiveTvPerf");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -300,6 +306,9 @@ public class MainActivity extends Activity {
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
                 mainFrameFailed = false;
+                navigationStartedAt = SystemClock.elapsedRealtime();
+                navigationUrl = url == null ? "" : url;
+                logNavigationStage("pageStarted", url);
 
                 if (isLocalHome(url)) {
                     enterHomeMode();
@@ -310,20 +319,25 @@ public class MainActivity extends Activity {
                     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     showLoading(url);
                 }
+                onLiveTvPageStarted(view, url);
             }
 
             @Override
             public void onPageCommitVisible(WebView view, String url) {
                 super.onPageCommitVisible(view, url);
+                logNavigationStage("commitVisible", url);
                 if (!mainFrameFailed) hideStatus();
+                onLiveTvPageCommitVisible(view, url);
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                logNavigationStage("pageFinished", url);
                 if (!mainFrameFailed) hideStatus();
                 applySimpleModeToPage(url);
                 if (isLocalHome(url)) maybeShowPendingUpdate();
+                onLiveTvPageFinished(view, url);
             }
 
             @Override
@@ -332,6 +346,7 @@ public class MainActivity extends Activity {
                 if (request.isForMainFrame()) {
                     mainFrameFailed = true;
                     CharSequence description = error == null ? null : error.getDescription();
+                    logNavigationStage("pageError", request.getUrl() == null ? "" : request.getUrl().toString());
                     showError("Não foi possível abrir o canal",
                             description == null ? "Verifica a ligação e tenta novamente." : description.toString());
                 }
@@ -346,6 +361,8 @@ public class MainActivity extends Activity {
                 int code = errorResponse.getStatusCode();
                 if (code >= 500 || code == 404 || code == 410) {
                     mainFrameFailed = true;
+                    logNavigationStage("httpError." + code,
+                            request.getUrl() == null ? "" : request.getUrl().toString());
                     showError("O canal não respondeu", "Erro HTTP " + code + ". Podes tentar novamente.");
                 }
             }
@@ -382,6 +399,7 @@ public class MainActivity extends Activity {
                     streamBackButton.bringToFront();
                 }
                 hideSystemBars();
+                onLiveTvFullscreenChanged(true);
             }
 
             @Override
@@ -389,6 +407,22 @@ public class MainActivity extends Activity {
                 exitFullscreen();
             }
         });
+    }
+
+    protected void onLiveTvPageStarted(WebView view, String url) {
+        // Hook for subclasses that need event-driven player UI updates.
+    }
+
+    protected void onLiveTvPageCommitVisible(WebView view, String url) {
+        // Hook for subclasses that need event-driven player UI updates.
+    }
+
+    protected void onLiveTvPageFinished(WebView view, String url) {
+        // Hook for subclasses that need event-driven player UI updates.
+    }
+
+    protected void onLiveTvFullscreenChanged(boolean isFullscreen) {
+        // Hook for subclasses that need event-driven player UI updates.
     }
 
     private void enterHomeMode() {
@@ -428,14 +462,38 @@ public class MainActivity extends Activity {
 
         web.evaluateJavascript(
                 "(function(){if(window.__liveTvAudioHelper)return;window.__liveTvAudioHelper=true;"
-                        + "function p(r){try{(r||document).querySelectorAll('video,audio').forEach(function(m){"
-                        + "try{if(!m.dataset.livetvSound){m.muted=false;m.defaultMuted=false;m.volume=1;"
-                        + "m.dataset.livetvSound='1';}}catch(e){}});}catch(e){}}"
-                        + "p(document);new MutationObserver(function(ms){ms.forEach(function(x){"
-                        + "x.addedNodes&&x.addedNodes.forEach(function(n){if(n.nodeType===1){"
-                        + "if(n.matches&&n.matches('video,audio')){try{n.muted=false;n.defaultMuted=false;n.volume=1;}catch(e){}}p(n);}});});"
-                        + "}).observe(document.documentElement,{childList:true,subtree:true});})();",
+                        + "var obs=null,done=false;"
+                        + "function report(s){try{if(window.LiveTvPerf&&LiveTvPerf.media)LiveTvPerf.media(s);}catch(e){}}"
+                        + "function stop(){if(done)return;done=true;try{if(obs)obs.disconnect();}catch(e){}}"
+                        + "function tune(m){try{m.removeAttribute('muted');m.muted=false;m.defaultMuted=false;m.volume=1;}catch(e){}"
+                        + "try{if(!m.dataset.livetvPerf){m.dataset.livetvPerf='1';"
+                        + "m.addEventListener('loadedmetadata',function(){report('loadedmetadata');},{once:true});"
+                        + "m.addEventListener('canplay',function(){report('canplay');},{once:true});"
+                        + "m.addEventListener('playing',function(){report('playing');stop();},{once:true});"
+                        + "if(!m.paused){report('playing');stop();}}}catch(e){}}"
+                        + "function p(r){try{var q=(r||document);if(q.matches&&q.matches('video,audio'))tune(q);"
+                        + "q.querySelectorAll&&q.querySelectorAll('video,audio').forEach(tune);}catch(e){}}"
+                        + "p(document);if(done)return;obs=new MutationObserver(function(ms){if(done)return;ms.forEach(function(x){"
+                        + "x.addedNodes&&x.addedNodes.forEach(function(n){if(n.nodeType===1)p(n);});});});"
+                        + "try{obs.observe(document.documentElement,{childList:true,subtree:true});}catch(e){}"
+                        + "setTimeout(stop,12000);})();",
                 null);
+    }
+
+    private void logNavigationStage(String stage, String url) {
+        long start = navigationStartedAt;
+        long elapsed = start <= 0 ? 0 : Math.max(0, SystemClock.elapsedRealtime() - start);
+        String current = url == null || url.trim().isEmpty() ? navigationUrl : url.trim();
+        Log.d(PERF_TAG, stage + " +" + elapsed + "ms " + current);
+    }
+
+    private final class PlaybackPerfBridge {
+        @JavascriptInterface
+        public void media(String stage) {
+            String value = stage == null ? "" : stage.trim().toLowerCase(Locale.ROOT);
+            if (!value.equals("loadedmetadata") && !value.equals("canplay") && !value.equals("playing")) return;
+            mainHandler.post(() -> logNavigationStage("media." + value, web == null ? "" : web.getUrl()));
+        }
     }
 
     private void showLoading(String url) {
@@ -709,6 +767,7 @@ public class MainActivity extends Activity {
             fullscreenCallback.onCustomViewHidden();
             fullscreenCallback = null;
         }
+        onLiveTvFullscreenChanged(false);
     }
 
     @Override
