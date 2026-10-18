@@ -6,10 +6,15 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.net.Uri;
+import android.os.Build;
 import android.os.SystemClock;
 import android.util.Log;
+import android.view.View;
+import android.view.ViewTreeObserver;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
+import android.webkit.WebViewRenderProcess;
+import android.webkit.WebViewRenderProcessClient;
 
 import java.net.IDN;
 import java.util.ArrayList;
@@ -40,6 +45,8 @@ final class ProviderDiagnostics {
     private final Set<String> seen = new HashSet<>();
 
     private WebView attachedView;
+    private ViewTreeObserver.OnGlobalLayoutListener visibilityListener;
+    private int lastWebVisibility = Integer.MIN_VALUE;
     private boolean sessionActive;
     private boolean rdembedSessionActive;
     private int nativePhase;
@@ -180,6 +187,7 @@ final class ProviderDiagnostics {
     }
 
     void destroy() {
+        detachViewObserver();
         attachedView = null;
         if (activeInstance == this) activeInstance = null;
         synchronized (lock) {
@@ -194,9 +202,66 @@ final class ProviderDiagnostics {
 
     private void attach(WebView view) {
         if (view == null || attachedView == view) return;
+        detachViewObserver();
         attachedView = view;
         try {
             view.addJavascriptInterface(new Bridge(), "LiveTvDiag");
+        } catch (Exception ignored) {}
+        installVisibilityObserver(view);
+        installRendererObserver(view);
+    }
+
+    private void installVisibilityObserver(WebView view) {
+        try {
+            lastWebVisibility = webVisibility(view);
+            visibilityListener = () -> {
+                int current = webVisibility(view);
+                if (current == lastWebVisibility) return;
+                lastWebVisibility = current;
+                recordUiState(current == 1 ? "web-visible" : "web-hidden");
+            };
+            ViewTreeObserver observer = view.getViewTreeObserver();
+            if (observer.isAlive()) observer.addOnGlobalLayoutListener(visibilityListener);
+        } catch (Exception ignored) {
+            visibilityListener = null;
+            lastWebVisibility = Integer.MIN_VALUE;
+        }
+    }
+
+    private void installRendererObserver(WebView view) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
+        try {
+            view.setWebViewRenderProcessClient(new WebViewRenderProcessClient() {
+                @Override
+                public void onRenderProcessUnresponsive(WebView view, WebViewRenderProcess renderer) {
+                    recordUiState("renderer-unresponsive");
+                }
+
+                @Override
+                public void onRenderProcessResponsive(WebView view, WebViewRenderProcess renderer) {
+                    recordUiState("renderer-responsive");
+                }
+            });
+        } catch (Exception ignored) {}
+    }
+
+    private int webVisibility(WebView view) {
+        try {
+            return view != null && view.getVisibility() == View.VISIBLE && view.isShown() ? 1 : 0;
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private void detachViewObserver() {
+        WebView view = attachedView;
+        ViewTreeObserver.OnGlobalLayoutListener listener = visibilityListener;
+        visibilityListener = null;
+        lastWebVisibility = Integer.MIN_VALUE;
+        if (view == null || listener == null) return;
+        try {
+            ViewTreeObserver observer = view.getViewTreeObserver();
+            if (observer.isAlive()) observer.removeOnGlobalLayoutListener(listener);
         } catch (Exception ignored) {}
     }
 
@@ -600,6 +665,10 @@ final class ProviderDiagnostics {
             case "fullscreen-exit":
             case "window-focus":
             case "window-blur":
+            case "web-visible":
+            case "web-hidden":
+            case "renderer-responsive":
+            case "renderer-unresponsive":
                 return value;
             default:
                 return null;
@@ -640,7 +709,8 @@ final class ProviderDiagnostics {
                 .append("popup(...) indica uma tentativa de abrir uma segunda janela; a política atual do WebView não é alterada.\n")
                 .append("No rdembed, frame-depth/controls/video/click são apenas estados observados; o diagnóstico não clica, bloqueia ou altera o player.\n")
                 .append("native-* vem do WebView nativo e contém apenas hostname + tipo aproximado; user-touch não guarda coordenadas.\n")
-                .append("native-http/native-net mostram apenas hostname + código de erro; ui-* mostra fullscreen/foco da app.\n\n");
+                .append("native-http/native-net mostram apenas hostname + código de erro.\n")
+                .append("ui-* mostra CustomView/fullscreen, foco, visibilidade da WebView e responsive/unresponsive do renderer; nada é alterado.\n\n");
         for (Entry entry : snapshot) {
             out.append('+').append(entry.elapsedMs).append(" ms  ")
                     .append(entry.kind).append("  ")
