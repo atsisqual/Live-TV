@@ -107,8 +107,8 @@ class ProviderDiagnosticsTests(unittest.TestCase):
 
     def test_release_version(self):
         gradle = (ROOT / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 57", gradle)
-        self.assertIn("versionName '1.6.30'", gradle)
+        self.assertIn("versionCode 58", gradle)
+        self.assertIn("versionName '1.6.31'", gradle)
 
 
 if __name__ == "__main__":
