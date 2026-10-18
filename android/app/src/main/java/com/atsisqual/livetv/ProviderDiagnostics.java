@@ -29,7 +29,9 @@ final class ProviderDiagnostics {
 
     private static final String TAG = "LiveTvProvider";
     private static final String LOCAL_HOME = "file:///android_asset/";
+    private static final String RDEMBED_HOST = "v2.rdembed.sbs";
     private static final int MAX_EVENTS = 80;
+    private static final int MAX_RECORDED_TOUCHES = 12;
 
     private final Activity activity;
     private final Object lock = new Object();
@@ -38,6 +40,9 @@ final class ProviderDiagnostics {
 
     private WebView attachedView;
     private boolean sessionActive;
+    private boolean rdembedSessionActive;
+    private int nativePhase;
+    private int recordedTouches;
     private long sessionStartedAt;
 
     ProviderDiagnostics(Activity activity) {
@@ -47,16 +52,27 @@ final class ProviderDiagnostics {
     void onPageStarted(WebView view, String url) {
         attach(view);
         if (isLocal(url)) {
-            sessionActive = false;
+            synchronized (lock) {
+                sessionActive = false;
+                rdembedSessionActive = false;
+                nativePhase = 0;
+                recordedTouches = 0;
+            }
             return;
         }
 
+        boolean rdembed = isRdembedUrl(url);
         synchronized (lock) {
             if (!sessionActive) {
                 entries.clear();
                 seen.clear();
                 sessionStartedAt = SystemClock.elapsedRealtime();
                 sessionActive = true;
+            }
+            rdembedSessionActive = rdembed;
+            if (rdembed) {
+                nativePhase = 0;
+                recordedTouches = 0;
             }
         }
         record("main-frame", url);
@@ -66,6 +82,44 @@ final class ProviderDiagnostics {
         attach(view);
         if (view == null || isLocal(url)) return;
         injectProbe(view);
+    }
+
+    void recordNativeResource(String rawKind, String rawHost) {
+        String host = normalizedHostValue(rawHost);
+        String kind = normalizedNativeKind(rawKind);
+        if (host == null || kind == null) return;
+
+        long elapsed;
+        String displayKind = "native-" + kind;
+        synchronized (lock) {
+            if (!sessionActive || !rdembedSessionActive || entries.size() >= MAX_EVENTS) return;
+            String key = "native:" + nativePhase + '|' + displayKind + '|' + host;
+            if (!seen.add(key)) return;
+            elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartedAt);
+            entries.add(new Entry(elapsed, displayKind, host));
+        }
+        Log.d(TAG, "+" + elapsed + "ms " + displayKind + " " + host);
+    }
+
+    void recordUserTouch(String rawHost) {
+        String host = normalizedHostValue(rawHost);
+        if (!RDEMBED_HOST.equals(host)) return;
+
+        long elapsed;
+        boolean recorded = false;
+        synchronized (lock) {
+            if (!sessionActive || !rdembedSessionActive || entries.size() >= MAX_EVENTS) return;
+            nativePhase++;
+            if (recordedTouches < MAX_RECORDED_TOUCHES) {
+                recordedTouches++;
+                elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartedAt);
+                entries.add(new Entry(elapsed, "user-touch", host));
+                recorded = true;
+            } else {
+                elapsed = 0L;
+            }
+        }
+        if (recorded) Log.d(TAG, "+" + elapsed + "ms user-touch " + host);
     }
 
     void showReport() {
@@ -86,6 +140,9 @@ final class ProviderDiagnostics {
             entries.clear();
             seen.clear();
             sessionActive = false;
+            rdembedSessionActive = false;
+            nativePhase = 0;
+            recordedTouches = 0;
         }
     }
 
@@ -471,6 +528,35 @@ final class ProviderDiagnostics {
         return null;
     }
 
+    private String normalizedNativeKind(String rawKind) {
+        if (rawKind == null) return null;
+        String value = rawKind.trim();
+        if (value.equals("main-frame") || value.equals("resource") || value.equals("media")
+                || value.equals("HLS") || value.equals("DASH")) {
+            return value;
+        }
+        return null;
+    }
+
+    private String normalizedHostValue(String rawHost) {
+        if (rawHost == null) return null;
+        String host = rawHost.trim().toLowerCase(Locale.ROOT);
+        if (host.isEmpty()) return null;
+        try {
+            host = IDN.toASCII(host).toLowerCase(Locale.ROOT);
+        } catch (Exception ignored) {}
+        if (!host.matches("^[a-z0-9.-]+$")) return null;
+        return host;
+    }
+
+    private boolean isRdembedUrl(String url) {
+        try {
+            return RDEMBED_HOST.equals(normalizedHost(Uri.parse(url == null ? "" : url)));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private String buildReport() {
         List<Entry> snapshot;
         synchronized (lock) {
@@ -484,7 +570,8 @@ final class ProviderDiagnostics {
         StringBuilder out = new StringBuilder();
         out.append("Só são mostrados hostnames; paths e endpoints de media são omitidos.\n")
                 .append("popup(...) indica uma tentativa de abrir uma segunda janela; a política atual do WebView não é alterada.\n")
-                .append("No rdembed, frame-depth/controls/video/click são apenas estados observados; o diagnóstico não clica, bloqueia ou altera o player.\n\n");
+                .append("No rdembed, frame-depth/controls/video/click são apenas estados observados; o diagnóstico não clica, bloqueia ou altera o player.\n")
+                .append("native-* vem do WebView nativo e contém apenas hostname + tipo aproximado; user-touch não guarda coordenadas.\n\n");
         for (Entry entry : snapshot) {
             out.append('+').append(entry.elapsedMs).append(" ms  ")
                     .append(entry.kind).append("  ")
