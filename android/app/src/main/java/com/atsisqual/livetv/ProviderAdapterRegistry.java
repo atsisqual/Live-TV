@@ -8,9 +8,9 @@ import java.util.List;
 /**
  * Central registry for provider adapters.
  *
- * Deliberately empty in v1.6.31: existing providers keep their current behaviour.
- * Add an adapter here only when a provider/source is explicitly authorized for the
- * automation it implements.
+ * Existing providers keep the default passive path unless an explicitly authorized
+ * adapter is listed here. v1.6.32 contains one exact-scope authorized adapter for
+ * https://v2.rdembed.sbs/assimeportugal.
  */
 final class ProviderAdapterRegistry {
 
@@ -26,7 +26,8 @@ final class ProviderAdapterRegistry {
         }
     };
 
-    private static final List<ProviderAdapter> AUTHORIZED_ADAPTERS = Collections.emptyList();
+    private static final List<ProviderAdapter> AUTHORIZED_ADAPTERS =
+            Collections.singletonList(new RdembedAssimPortugalAdapter());
 
     private ProviderAdapterRegistry() {}
 
