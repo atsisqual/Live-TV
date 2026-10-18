@@ -93,6 +93,17 @@ class ProviderDiagnosticsTests(unittest.TestCase):
         ):
             self.assertNotIn(marker, source)
 
+    def test_adapter_diagnostics_are_coarse_and_reportable(self):
+        diagnostics = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "ProviderDiagnostics.java").read_text(encoding="utf-8")
+        self.assertIn("recordAdapterDiagnosticIfActive", diagnostics)
+        self.assertIn("normalizedAdapterState", diagnostics)
+        self.assertIn("adapter-*", diagnostics)
+        self.assertIn("same-origin", diagnostics)
+        self.assertIn("cross-origin", diagnostics)
+        self.assertNotIn("getRequestHeaders", diagnostics)
+        self.assertNotIn("CookieManager.getCookie", diagnostics)
+        self.assertNotIn("getQueryParameter", diagnostics)
+
     def test_native_diagnostics_do_not_change_request_policy(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "MainActivity.java").read_text(encoding="utf-8")
         self.assertIn("if (isBlocked(uri)) return emptyResponse();", main)
@@ -107,8 +118,8 @@ class ProviderDiagnosticsTests(unittest.TestCase):
 
     def test_release_version(self):
         gradle = (ROOT / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 59", gradle)
-        self.assertIn("versionName '1.6.32'", gradle)
+        self.assertIn("versionCode 60", gradle)
+        self.assertIn("versionName '1.6.33'", gradle)
 
 
 if __name__ == "__main__":
