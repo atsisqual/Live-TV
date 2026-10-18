@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.31 adds an explicit no-op-by-default provider adapter architecture.
-        versionCode 58
-        versionName '1.6.31'
+        // v1.6.32 enables the explicitly authorized Assim Portugal provider adapter.
+        versionCode 59
+        versionName '1.6.32'
     }
 
     buildFeatures {
