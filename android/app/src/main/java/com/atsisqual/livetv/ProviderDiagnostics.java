@@ -28,9 +28,6 @@ import java.util.Set;
  * Privacy invariant: only normalized hostnames, coarse event categories and elapsed
  * timings are retained. No paths, query strings, fragments, headers, cookies,
  * tokens, response bodies, playlists or media endpoint URLs are stored or shown.
- *
- * The diagnostics never click, remove, hide, skip, reload, terminate or otherwise
- * alter provider/player behaviour.
  */
 final class ProviderDiagnostics {
 
@@ -67,6 +64,11 @@ final class ProviderDiagnostics {
     static void recordUiStateIfActive(String rawState) {
         ProviderDiagnostics current = activeInstance;
         if (current != null) current.recordUiState(rawState);
+    }
+
+    static void recordAdapterDiagnosticIfActive(String rawState) {
+        ProviderDiagnostics current = activeInstance;
+        if (current != null) current.recordAdapterDiagnostic(rawState);
     }
 
     void onPageStarted(WebView view, String url) {
@@ -172,6 +174,25 @@ final class ProviderDiagnostics {
             host = sessionHost;
             if (host == null || host.isEmpty()) return;
             String key = "ui:" + nativePhase + '|' + displayKind;
+            if (!seen.add(key)) return;
+            elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartedAt);
+            entries.add(new Entry(elapsed, displayKind, host));
+        }
+        Log.d(TAG, "+" + elapsed + "ms " + displayKind + " " + host);
+    }
+
+    private void recordAdapterDiagnostic(String rawState) {
+        String state = normalizedAdapterState(rawState);
+        if (state == null) return;
+
+        long elapsed;
+        String host;
+        String displayKind = "adapter-" + state;
+        synchronized (lock) {
+            if (!sessionActive || entries.size() >= MAX_EVENTS) return;
+            host = sessionHost;
+            if (host == null || host.isEmpty()) return;
+            String key = "adapter|" + displayKind;
             if (!seen.add(key)) return;
             elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartedAt);
             entries.add(new Entry(elapsed, displayKind, host));
@@ -303,6 +324,22 @@ final class ProviderDiagnostics {
         }
     }
 
+    private String normalizedAdapterState(String rawState) {
+        if (rawState == null) return null;
+        String value = rawState.trim().toLowerCase(Locale.ROOT);
+        if (value.equals("top-play-present") || value.equals("top-play-absent")
+                || value.equals("playing-yes") || value.equals("playing-no")
+                || value.equals("scan-error")) {
+            return value;
+        }
+        if (value.matches("frames-(0|1|2|3|3plus)")) return value;
+        if (value.matches("same-origin-frames-(0|1|2|3|3plus)")) return value;
+        if (value.matches("cross-origin-frames-(0|1|2|3|3plus)")) return value;
+        if (value.matches("play-depth-(none|0|1|2|3plus)")) return value;
+        if (value.matches("click-attempts-(0|1|2|3|3plus)")) return value;
+        return null;
+    }
+
     private String normalizedHost(String rawUrl) {
         try {
             return normalizedHost(Uri.parse(rawUrl == null ? "" : rawUrl.trim()));
@@ -342,11 +379,12 @@ final class ProviderDiagnostics {
         }
 
         StringBuilder out = new StringBuilder();
-        out.append("Diagnóstico genérico do WebView; não entra no DOM de iframes nem altera o player.\n")
+        out.append("Diagnóstico genérico do WebView; não altera o player.\n")
                 .append("Só são mostrados hostnames, categorias aproximadas e tempos; paths/endpoints de media são omitidos.\n")
                 .append("native-http/native-net mostram apenas hostname + código de erro.\n")
                 .append("ui-* mostra fullscreen/foco/visibilidade e responsive/unresponsive do renderer.\n")
-                .append("user-touch não guarda coordenadas e não provoca cliques automáticos.\n\n");
+                .append("user-touch não guarda coordenadas e não provoca cliques automáticos.\n")
+                .append("adapter-* é diagnóstico dirigido do adapter autorizado: pode contar/inspecionar apenas DOM same-origin; iframes cross-origin são apenas contados como inacessíveis.\n\n");
         for (Entry entry : snapshot) {
             out.append('+').append(entry.elapsedMs).append(" ms  ")
                     .append(entry.kind).append("  ")
