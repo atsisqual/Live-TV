@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.33 adds directed same-origin diagnostics for the authorized Assim Portugal adapter.
-        versionCode 60
-        versionName '1.6.33'
+        // v1.6.34 adds the exact-scope native centre tap for the authorized Assim Portugal adapter.
+        versionCode 61
+        versionName '1.6.34'
     }
 
     buildFeatures {
