@@ -50,6 +50,29 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
         ):
             self.assertIn(marker, source)
 
+    def test_native_rdembed_diagnostics_are_hostname_only(self):
+        main = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "MainActivity.java").read_text(encoding="utf-8")
+        synced = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "SyncedEpgMainActivity.java").read_text(encoding="utf-8")
+        diagnostics = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "ProviderDiagnostics.java").read_text(encoding="utf-8")
+
+        self.assertIn("onLiveTvResourceObserved(host, classifyObservedResource(uri, request.isForMainFrame()))", main)
+        self.assertIn("onLiveTvUserTouch(host)", main)
+        self.assertIn("recordNativeResource(kind, host)", synced)
+        self.assertIn("recordUserTouch(host)", synced)
+        self.assertIn("nativePhase", diagnostics)
+        self.assertIn("native-", diagnostics)
+        self.assertIn("user-touch", diagnostics)
+        self.assertNotIn("getRequestHeaders", main)
+        self.assertNotIn("getRequestHeaders", diagnostics)
+        self.assertNotIn("CookieManager.getCookie", diagnostics)
+        self.assertNotIn("getQueryParameter", diagnostics)
+
+    def test_native_diagnostics_do_not_change_request_policy(self):
+        main = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "MainActivity.java").read_text(encoding="utf-8")
+        self.assertIn("if (isBlocked(uri)) return emptyResponse();", main)
+        self.assertIn("return super.shouldInterceptRequest(view, request);", main)
+        self.assertIn("return false;", main)
+
     def test_diagnostics_do_not_click_or_block_rdembed_player(self):
         source = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "ProviderDiagnostics.java").read_text(encoding="utf-8")
         self.assertNotIn("play.click()", source)
@@ -68,8 +91,8 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
 
     def test_release_version(self):
         gradle = (ROOT / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 53", gradle)
-        self.assertIn("versionName '1.6.26'", gradle)
+        self.assertIn("versionCode 54", gradle)
+        self.assertIn("versionName '1.6.27'", gradle)
 
 
 if __name__ == "__main__":
