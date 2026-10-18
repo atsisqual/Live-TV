@@ -14,7 +14,25 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
         self.assertIn("popup:link", source)
         self.assertIn("originalOpen.apply(window,arguments)", source)
 
-    def test_rdembed_same_origin_frame_states_are_observed(self):
+    def test_rdembed_frame_map_and_generic_clicks_are_observed(self):
+        source = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "ProviderDiagnostics.java").read_text(encoding="utf-8")
+        for marker in (
+            "frame-depth-",
+            "same-origin",
+            "cross-origin",
+            "inaccessible",
+            "controls-present-depth-",
+            "video-present-depth-",
+            "classifyClickTarget",
+            "click('+clickKind+')-depth-",
+            "frameSourceHost",
+        ):
+            self.assertIn(marker, source)
+        self.assertIn("frame.contentDocument", source)
+        self.assertIn("frame.contentWindow", source)
+        self.assertIn("frame.getAttribute('src')", source)
+
+    def test_existing_rdembed_media_states_remain_observed(self):
         source = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "ProviderDiagnostics.java").read_text(encoding="utf-8")
         for marker in (
             "frame-ready",
@@ -31,10 +49,6 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
             "media-error",
         ):
             self.assertIn(marker, source)
-        self.assertIn("frame.contentDocument", source)
-        self.assertIn("frame.contentWindow", source)
-        self.assertIn("frameHost!=='v2.rdembed.sbs'", source)
-        self.assertIn("LiveTvDiag.event(k,'https://v2.rdembed.sbs/')", source)
 
     def test_diagnostics_do_not_click_or_block_rdembed_player(self):
         source = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "ProviderDiagnostics.java").read_text(encoding="utf-8")
@@ -42,6 +56,8 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("preventDefault()", source)
         self.assertNotIn("stopImmediatePropagation()", source)
         self.assertNotIn("remove()", source)
+        self.assertNotIn("getRequestHeaders", source)
+        self.assertNotIn("CookieManager.getCookie", source)
 
     def test_webview_popup_policy_is_still_unchanged(self):
         source = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "MainActivity.java").read_text(encoding="utf-8")
@@ -52,8 +68,8 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
 
     def test_release_version(self):
         gradle = (ROOT / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 52", gradle)
-        self.assertIn("versionName '1.6.25'", gradle)
+        self.assertIn("versionCode 53", gradle)
+        self.assertIn("versionName '1.6.26'", gradle)
 
 
 if __name__ == "__main__":

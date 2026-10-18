@@ -129,13 +129,16 @@ final class ProviderDiagnostics {
                     }catch(e){}
                   }
 
-                  function sendState(kind){
+                  function sendState(kind,host){
                     try{
+                      var h=String(host||'v2.rdembed.sbs').toLowerCase();
+                      if(!h||!/^[a-z0-9.-]+$/.test(h))return;
                       var k='state:'+String(kind||'');
-                      if(sent[k])return;
-                      sent[k]=1;
+                      var key=k+'|'+h;
+                      if(sent[key])return;
+                      sent[key]=1;
                       if(window.LiveTvDiag&&LiveTvDiag.event){
-                        LiveTvDiag.event(k,'https://v2.rdembed.sbs/');
+                        LiveTvDiag.event(k,'https://'+h+'/');
                       }
                     }catch(e){}
                   }
@@ -219,37 +222,83 @@ final class ProviderDiagnostics {
                         }catch(e){return false;}
                       }
 
-                      function watchMediaElement(media){
+                      function currentHost(doc){
+                        try{
+                          return String((doc&&doc.defaultView&&doc.defaultView.location.hostname)||'v2.rdembed.sbs').toLowerCase();
+                        }catch(e){return 'v2.rdembed.sbs';}
+                      }
+
+                      function frameSourceHost(frame,parentDoc){
+                        try{
+                          var raw=String(frame.getAttribute('src')||'').trim();
+                          if(!raw)return '';
+                          return String(new URL(raw,parentDoc.location.href).hostname||'').toLowerCase();
+                        }catch(e){return '';}
+                      }
+
+                      function classifyClickTarget(node){
+                        try{
+                          if(!node||!node.closest)return 'other';
+                          if(node.closest('button,[role="button"],input[type="button"],input[type="submit"]'))return 'button';
+                          if(node.closest('a[href]'))return 'link';
+                        }catch(e){}
+                        return 'other';
+                      }
+
+                      function watchMediaElement(media,depth,host){
                         try{
                           if(!media||watchedMedia.has(media))return;
                           watchedMedia.add(media);
-                          sendState('video-created');
+                          sendState('video-created',host);
+                          sendState('video-present-depth-'+depth,host);
                           ['play','loadedmetadata','canplay','playing','waiting','stalled','error'].forEach(function(name){
-                            media.addEventListener(name,function(){sendState('media-'+name);});
+                            media.addEventListener(name,function(){sendState('media-'+name,host);});
                           });
                         }catch(e){}
                       }
 
-                      function inspectFrame(frame,depth){
+                      function inspectFrame(frame,depth,parentDoc){
+                        var nextDepth=depth+1;
+                        var sourceHost=frameSourceHost(frame,parentDoc);
                         try{
                           var win=frame.contentWindow;
                           var doc=frame.contentDocument;
-                          if(!win||!doc)return;
-                          var frameHost=String(win.location.hostname||'').toLowerCase();
-                          if(frameHost!=='v2.rdembed.sbs')return;
-                          sendState('frame-ready');
-                          watchDocument(doc,depth+1);
-                        }catch(e){}
+                          if(!win||!doc){
+                            var parentHost=currentHost(parentDoc);
+                            if(sourceHost&&sourceHost!==parentHost){
+                              sendState('frame-depth-'+nextDepth+'-cross-origin',sourceHost);
+                            }else{
+                              sendState('frame-depth-'+nextDepth+'-inaccessible',sourceHost||parentHost);
+                            }
+                            return;
+                          }
+                          var parentHost=currentHost(parentDoc);
+                          var actualHost=String(win.location.hostname||'').toLowerCase();
+                          if(!actualHost&&sourceHost&&sourceHost!==parentHost){
+                            sendState('frame-depth-'+nextDepth+'-cross-origin',sourceHost);
+                            return;
+                          }
+                          var frameHost=actualHost||sourceHost||parentHost;
+                          sendState('frame-depth-'+nextDepth+'-same-origin',frameHost);
+                          sendState('frame-ready',frameHost);
+                          watchDocument(doc,nextDepth);
+                        }catch(e){
+                          if(sourceHost){
+                            sendState('frame-depth-'+nextDepth+'-cross-origin',sourceHost);
+                          }else{
+                            sendState('frame-depth-'+nextDepth+'-inaccessible',currentHost(parentDoc));
+                          }
+                        }
                       }
 
-                      function watchFrame(frame,depth){
+                      function watchFrame(frame,depth,parentDoc){
                         try{
                           if(!frame)return;
                           if(!watchedFrames.has(frame)){
                             watchedFrames.add(frame);
-                            frame.addEventListener('load',function(){inspectFrame(frame,depth);});
+                            frame.addEventListener('load',function(){inspectFrame(frame,depth,parentDoc);});
                           }
-                          inspectFrame(frame,depth);
+                          inspectFrame(frame,depth,parentDoc);
                         }catch(e){}
                       }
 
@@ -259,6 +308,7 @@ final class ProviderDiagnostics {
                           watchedDocs.add(doc);
                           var win=doc.defaultView;
                           if(!win)return;
+                          var host=currentHost(doc);
 
                           var adWasVisible=false;
                           var uiQueued=false;
@@ -267,10 +317,16 @@ final class ProviderDiagnostics {
                             uiQueued=false;
                             try{
                               var play=doc.querySelector('#center-play-btn,.center-play-btn');
-                              if(play&&visible(play,win))sendState('play-visible');
+                              if(play&&visible(play,win))sendState('play-visible',host);
+                              if(doc.querySelector('button,[role="button"],input[type="button"],input[type="submit"],a[href]')){
+                                sendState('controls-present-depth-'+depth,host);
+                              }
+                              if(doc.querySelector('video,audio')){
+                                sendState('video-present-depth-'+depth,host);
+                              }
                               var nowAd=adVisible(doc);
-                              if(nowAd&&!adWasVisible)sendState('ad-visible');
-                              if(!nowAd&&adWasVisible)sendState('ad-hidden');
+                              if(nowAd&&!adWasVisible)sendState('ad-visible',host);
+                              if(!nowAd&&adWasVisible)sendState('ad-hidden',host);
                               adWasVisible=nowAd;
                             }catch(e){}
                           }
@@ -284,11 +340,11 @@ final class ProviderDiagnostics {
                           function scanDocNode(node){
                             try{
                               if(!node||node.nodeType!==1)return;
-                              if(node.matches&&node.matches('video,audio'))watchMediaElement(node);
-                              if(node.matches&&node.matches('iframe'))watchFrame(node,depth);
+                              if(node.matches&&node.matches('video,audio'))watchMediaElement(node,depth,host);
+                              if(node.matches&&node.matches('iframe'))watchFrame(node,depth,doc);
                               if(node.querySelectorAll){
-                                node.querySelectorAll('video,audio').forEach(watchMediaElement);
-                                node.querySelectorAll('iframe').forEach(function(f){watchFrame(f,depth);});
+                                node.querySelectorAll('video,audio').forEach(function(m){watchMediaElement(m,depth,host);});
+                                node.querySelectorAll('iframe').forEach(function(f){watchFrame(f,depth,doc);});
                               }
                             }catch(e){}
                           }
@@ -296,8 +352,10 @@ final class ProviderDiagnostics {
                           doc.addEventListener('click',function(ev){
                             try{
                               var n=ev.target;
+                              var clickKind=classifyClickTarget(n);
+                              sendState('click('+clickKind+')-depth-'+depth,host);
                               var play=n&&n.closest?n.closest('#center-play-btn,.center-play-btn'):null;
-                              if(play)sendState('play-click');
+                              if(play)sendState('play-click',host);
                             }catch(e){}
                           },true);
 
@@ -403,8 +461,14 @@ final class ProviderDiagnostics {
             case "media-error":
                 return state;
             default:
-                return null;
+                break;
         }
+
+        if (state.matches("frame-depth-\\d+-(same-origin|cross-origin|inaccessible)")) return state;
+        if (state.matches("controls-present-depth-\\d+")) return state;
+        if (state.matches("video-present-depth-\\d+")) return state;
+        if (state.matches("click\\((button|link|other)\\)-depth-\\d+")) return state;
+        return null;
     }
 
     private String buildReport() {
@@ -420,7 +484,7 @@ final class ProviderDiagnostics {
         StringBuilder out = new StringBuilder();
         out.append("Só são mostrados hostnames; paths e endpoints de media são omitidos.\n")
                 .append("popup(...) indica uma tentativa de abrir uma segunda janela; a política atual do WebView não é alterada.\n")
-                .append("No rdembed, frame/play/ad/media são apenas estados observados; o diagnóstico não clica, bloqueia ou altera o player.\n\n");
+                .append("No rdembed, frame-depth/controls/video/click são apenas estados observados; o diagnóstico não clica, bloqueia ou altera o player.\n\n");
         for (Entry entry : snapshot) {
             out.append('+').append(entry.elapsedMs).append(" ms  ")
                     .append(entry.kind).append("  ")
