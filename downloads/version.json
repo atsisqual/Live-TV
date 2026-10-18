@@ -1,9 +1,9 @@
 {
-  "versionCode": 58,
-  "versionName": "1.6.31",
-  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.31.apk",
+  "versionCode": 59,
+  "versionName": "1.6.32",
+  "apkUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-v1.6.32.apk",
   "latestUrl": "https://raw.githubusercontent.com/atsisqual/Live-TV/gh-pages/downloads/Live-TV-latest.apk",
   "signedRelease": true,
   "notes": "TV do Zé: logos dark/light embebidos em base64, DAZN 1/2/3 com branding DAZN (sem Eleven), Sport TV 1–6 numerada, Sporting TV otimizada para fundo escuro, sidebar com os 12 canais e migração automática dos logos já importados sem alterar URLs ou players.",
-  "publishedAt": "2026-10-18T14:38:54Z"
+  "publishedAt": "2026-10-18T15:25:56Z"
 }
