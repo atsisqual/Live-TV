@@ -122,6 +122,16 @@ final class ProviderDiagnostics {
                         + "var po=null,mo=null;"
                         + "try{po=new PerformanceObserver(function(l){l.getEntries().forEach(function(e){send('resource:'+(e.initiatorType||'other'),e.name);});});po.observe({entryTypes:['resource']});}catch(e){}"
                         + "try{mo=new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes&&m.addedNodes.forEach(scan);});});mo.observe(document.documentElement,{childList:true,subtree:true});}catch(e){}"
+                        + "try{var hn=String(location.hostname||'').toLowerCase();"
+                        + "if(hn==='v2.rdembed.sbs'){"
+                        + "var lastGesture=0;"
+                        + "['pointerdown','mousedown','touchstart','click','keydown'].forEach(function(t){document.addEventListener(t,function(){lastGesture=Date.now();},true);});"
+                        + "var originalOpen=window.open;"
+                        + "window.open=function(u){try{var k=((Date.now()-lastGesture)<=1200)?'popup:gesture':'popup:script';send(k,u||location.href);}catch(e){}"
+                        + "try{return originalOpen.apply(window,arguments);}catch(e){return null;}};"
+                        + "document.addEventListener('click',function(ev){try{var n=ev.target;var a=n&&n.closest?n.closest('a[target=\"_blank\"],a[target=\"_new\"]'):null;"
+                        + "if(a)send('popup:link',a.href||location.href);}catch(e){}},true);"
+                        + "}}catch(e){}"
                         + "setTimeout(function(){try{if(po)po.disconnect();}catch(e){}try{if(mo)mo.disconnect();}catch(e){}},15000);"
                         + "}catch(e){}})();";
         try {
@@ -162,6 +172,9 @@ final class ProviderDiagnostics {
 
         String kind = rawKind == null ? "resource" : rawKind.trim().toLowerCase(Locale.ROOT);
         if (kind.startsWith("resource:")) kind = kind.substring("resource:".length());
+        if (kind.equals("popup:gesture")) return "popup(user)";
+        if (kind.equals("popup:script")) return "popup(script)";
+        if (kind.equals("popup:link")) return "popup(link)";
         if (kind.equals("xmlhttprequest")) return "XHR";
         if (kind.equals("fetch")) return "fetch";
         if (kind.equals("iframe")) return "iframe";
@@ -184,7 +197,8 @@ final class ProviderDiagnostics {
         }
 
         StringBuilder out = new StringBuilder();
-        out.append("Só são mostrados hostnames; paths e endpoints de media são omitidos.\n\n");
+        out.append("Só são mostrados hostnames; paths e endpoints de media são omitidos.\n")
+                .append("popup(...) indica uma tentativa de abrir uma segunda janela; a política atual do WebView não é alterada.\n\n");
         for (Entry entry : snapshot) {
             out.append('+').append(entry.elapsedMs).append(" ms  ")
                     .append(entry.kind).append("  ")
