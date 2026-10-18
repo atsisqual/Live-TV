@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.23 hotfix restores the v1.6.21 playback runtime while keeping provider_profile as catalogue metadata only.
-        versionCode 50
-        versionName '1.6.23'
+        // v1.6.24 adds rdembed popup-attempt diagnostics without changing playback policy.
+        versionCode 51
+        versionName '1.6.24'
     }
 
     buildFeatures {
