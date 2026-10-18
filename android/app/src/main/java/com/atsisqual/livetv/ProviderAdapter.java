@@ -17,6 +17,7 @@ interface ProviderAdapter {
 
     enum Capability {
         AUTOSTART,
+        AD_SUPPRESSION,
         FULLSCREEN,
         FALLBACK
     }
