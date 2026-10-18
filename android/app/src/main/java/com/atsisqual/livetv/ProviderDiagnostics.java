@@ -272,7 +272,13 @@ final class ProviderDiagnostics {
                             }
                             return;
                           }
-                          var frameHost=String(win.location.hostname||sourceHost||currentHost(parentDoc)).toLowerCase();
+                          var parentHost=currentHost(parentDoc);
+                          var actualHost=String(win.location.hostname||'').toLowerCase();
+                          if(!actualHost&&sourceHost&&sourceHost!==parentHost){
+                            sendState('frame-depth-'+nextDepth+'-cross-origin',sourceHost);
+                            return;
+                          }
+                          var frameHost=actualHost||sourceHost||parentHost;
                           sendState('frame-depth-'+nextDepth+'-same-origin',frameHost);
                           sendState('frame-ready',frameHost);
                           watchDocument(doc,nextDepth);
