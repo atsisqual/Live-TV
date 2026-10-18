@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.30 removes deep provider DOM diagnostics and keeps generic native telemetry only.
-        versionCode 57
-        versionName '1.6.30'
+        // v1.6.31 adds an explicit no-op-by-default provider adapter architecture.
+        versionCode 58
+        versionName '1.6.31'
     }
 
     buildFeatures {
