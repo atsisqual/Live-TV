@@ -264,7 +264,12 @@ final class ProviderDiagnostics {
                           var win=frame.contentWindow;
                           var doc=frame.contentDocument;
                           if(!win||!doc){
-                            sendState('frame-depth-'+nextDepth+'-inaccessible',sourceHost||currentHost(parentDoc));
+                            var parentHost=currentHost(parentDoc);
+                            if(sourceHost&&sourceHost!==parentHost){
+                              sendState('frame-depth-'+nextDepth+'-cross-origin',sourceHost);
+                            }else{
+                              sendState('frame-depth-'+nextDepth+'-inaccessible',sourceHost||parentHost);
+                            }
                             return;
                           }
                           var frameHost=String(win.location.hostname||sourceHost||currentHost(parentDoc)).toLowerCase();
