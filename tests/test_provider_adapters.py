@@ -64,6 +64,13 @@ class ProviderAdapterArchitectureTests(unittest.TestCase):
         self.assertIn("recordAdapterDiagnosticIfActive", diagnostics)
         self.assertIn("normalizedAdapterState", diagnostics)
         self.assertIn('"adapter-" + state', diagnostics)
+        for state in (
+            "native-center-tap-scheduled",
+            "native-center-tap-deferred",
+            "native-center-tap-dispatched",
+            "native-center-tap-unhandled",
+        ):
+            self.assertIn(state, diagnostics)
         self.assertIn("same-origin", diagnostics)
         self.assertIn("cross-origin", diagnostics)
         self.assertNotIn("getRequestHeaders", diagnostics)
@@ -89,8 +96,8 @@ class ProviderAdapterArchitectureTests(unittest.TestCase):
 
     def test_release_version(self):
         gradle = (ROOT / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 61", gradle)
-        self.assertIn("versionName '1.6.34'", gradle)
+        self.assertIn("versionCode 62", gradle)
+        self.assertIn("versionName '1.6.35'", gradle)
 
 
 if __name__ == "__main__":

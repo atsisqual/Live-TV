@@ -329,6 +329,10 @@ final class ProviderDiagnostics {
         String value = rawState.trim().toLowerCase(Locale.ROOT);
         if (value.equals("top-play-present") || value.equals("top-play-absent")
                 || value.equals("playing-yes") || value.equals("playing-no")
+                || value.equals("native-center-tap-scheduled")
+                || value.equals("native-center-tap-deferred")
+                || value.equals("native-center-tap-dispatched")
+                || value.equals("native-center-tap-unhandled")
                 || value.equals("scan-error")) {
             return value;
         }
@@ -384,7 +388,8 @@ final class ProviderDiagnostics {
                 .append("native-http/native-net mostram apenas hostname + código de erro.\n")
                 .append("ui-* mostra fullscreen/foco/visibilidade e responsive/unresponsive do renderer.\n")
                 .append("user-touch não guarda coordenadas e não provoca cliques automáticos.\n")
-                .append("adapter-* é diagnóstico dirigido do adapter autorizado: pode contar/inspecionar apenas DOM same-origin; iframes cross-origin são apenas contados como inacessíveis.\n\n");
+                .append("adapter-* é diagnóstico dirigido do adapter autorizado: pode contar/inspecionar apenas DOM same-origin; iframes cross-origin são apenas contados como inacessíveis.\n")
+                .append("adapter-native-center-tap-* indica apenas o estado do toque nativo limitado; não guarda coordenadas.\n\n");
         for (Entry entry : snapshot) {
             out.append('+').append(entry.elapsedMs).append(" ms  ")
                     .append(entry.kind).append("  ")
