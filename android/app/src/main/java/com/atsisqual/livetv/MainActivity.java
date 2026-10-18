@@ -279,6 +279,16 @@ public class MainActivity extends Activity {
         AdCleaner.install(web);
         web.addJavascriptInterface(new AppSettingsBridge(), "LiveTvSettings");
         web.addJavascriptInterface(new PlaybackPerfBridge(), "LiveTvPerf");
+        web.setOnTouchListener((v, event) -> {
+            if (event != null && event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+                try {
+                    String current = web.getUrl();
+                    String host = normalizedHost(Uri.parse(current == null ? "" : current));
+                    if (host != null && !host.isEmpty()) onLiveTvUserTouch(host);
+                } catch (Exception ignored) {}
+            }
+            return false;
+        });
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -369,7 +379,12 @@ public class MainActivity extends Activity {
 
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                if (isBlocked(request.getUrl())) return emptyResponse();
+                Uri uri = request.getUrl();
+                String host = normalizedHost(uri);
+                if (host != null && !host.isEmpty()) {
+                    onLiveTvResourceObserved(host, classifyObservedResource(uri, request.isForMainFrame()));
+                }
+                if (isBlocked(uri)) return emptyResponse();
                 return super.shouldInterceptRequest(view, request);
             }
         });
@@ -423,6 +438,14 @@ public class MainActivity extends Activity {
 
     protected void onLiveTvFullscreenChanged(boolean isFullscreen) {
         // Hook for subclasses that need event-driven player UI updates.
+    }
+
+    protected void onLiveTvResourceObserved(String host, String kind) {
+        // Hook receives only a normalized hostname and coarse resource kind.
+    }
+
+    protected void onLiveTvUserTouch(String host) {
+        // Hook receives only the current normalized hostname; coordinates are not retained.
     }
 
     private void enterHomeMode() {
@@ -677,6 +700,19 @@ public class MainActivity extends Activity {
         } else {
             getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         }
+    }
+
+    private String classifyObservedResource(Uri uri, boolean mainFrame) {
+        if (mainFrame) return "main-frame";
+        String path = uri == null || uri.getPath() == null
+                ? "" : uri.getPath().toLowerCase(Locale.ROOT);
+        if (path.endsWith(".m3u8")) return "HLS";
+        if (path.endsWith(".mpd")) return "DASH";
+        if (path.endsWith(".m4s") || path.endsWith(".ts") || path.endsWith(".mp4")
+                || path.endsWith(".webm") || path.endsWith(".aac") || path.endsWith(".mp3")) {
+            return "media";
+        }
+        return "resource";
     }
 
     private boolean isHttp(Uri uri) {
