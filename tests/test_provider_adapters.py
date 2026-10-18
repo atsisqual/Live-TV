@@ -46,6 +46,19 @@ class ProviderAdapterArchitectureTests(unittest.TestCase):
         self.assertNotIn(".mpd", source)
         self.assertNotIn("src", source.lower().replace("resource", ""))
 
+    def test_authorized_adapter_native_tap_targets_webview_centre_only(self):
+        source = (JAVA / "RdembedAssimPortugalAdapter.java").read_text(encoding="utf-8")
+        self.assertIn("NATIVE_CENTER_TAP_DELAY_MS = 2800L", source)
+        self.assertIn("MotionEvent.ACTION_DOWN", source)
+        self.assertIn("MotionEvent.ACTION_UP", source)
+        self.assertIn("width * 0.5f", source)
+        self.assertIn("height * 0.5f", source)
+        self.assertIn("view.onTouchEvent(down)", source)
+        self.assertIn("view.onTouchEvent(up)", source)
+        self.assertIn("matchesCurrentUrl(view)", source)
+        self.assertNotIn("dispatchTouchEvent", source)
+        self.assertNotIn("contentWindow", source)
+
     def test_adapter_diagnostics_are_whitelisted_before_report(self):
         diagnostics = (JAVA / "ProviderDiagnostics.java").read_text(encoding="utf-8")
         self.assertIn("recordAdapterDiagnosticIfActive", diagnostics)
@@ -76,8 +89,8 @@ class ProviderAdapterArchitectureTests(unittest.TestCase):
 
     def test_release_version(self):
         gradle = (ROOT / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 60", gradle)
-        self.assertIn("versionName '1.6.33'", gradle)
+        self.assertIn("versionCode 61", gradle)
+        self.assertIn("versionName '1.6.34'", gradle)
 
 
 if __name__ == "__main__":
