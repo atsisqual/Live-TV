@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.24 adds rdembed popup-attempt diagnostics without changing playback policy.
-        versionCode 51
-        versionName '1.6.24'
+        // v1.6.25 adds rdembed same-origin frame state diagnostics without changing playback behavior.
+        versionCode 52
+        versionName '1.6.25'
     }
 
     buildFeatures {
