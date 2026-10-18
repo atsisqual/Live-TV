@@ -110,6 +110,20 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
         installDiagnosticShortcuts();
     }
 
+    @Override
+    protected void onLiveTvResourceObserved(String host, String kind) {
+        ensureProviderDiagnostics();
+        providerDiagnostics.recordNativeResource(kind, host);
+        super.onLiveTvResourceObserved(host, kind);
+    }
+
+    @Override
+    protected void onLiveTvUserTouch(String host) {
+        ensureProviderDiagnostics();
+        providerDiagnostics.recordUserTouch(host);
+        super.onLiveTvUserTouch(host);
+    }
+
     private void ensureProviderDiagnostics() {
         if (providerDiagnostics == null) providerDiagnostics = new ProviderDiagnostics(this);
     }
