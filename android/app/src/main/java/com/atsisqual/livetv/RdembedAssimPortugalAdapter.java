@@ -3,6 +3,8 @@ package com.atsisqual.livetv;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.view.MotionEvent;
 import android.webkit.WebView;
 
 import org.json.JSONArray;
@@ -15,15 +17,18 @@ import java.util.Set;
 /**
  * Explicitly authorized adapter for https://v2.rdembed.sbs/assimeportugal.
  *
- * Scope is intentionally exact: no other rdembed route is automated. Playback
- * automation only manipulates the top-level same-origin page. v1.6.33 adds bounded
- * diagnostics that may inspect same-origin iframe documents, but never cross-origin
- * iframe contents, media URLs, request headers, cookies, tokens or playlist endpoints.
+ * Scope is intentionally exact: no other rdembed route is automated. v1.6.34 adds
+ * one bounded native tap at the visual centre of the WebView after the cross-origin
+ * player has had time to appear. The point is derived from the WebView dimensions,
+ * never from device-specific coordinates. No cross-origin DOM, media URL, request
+ * header, cookie, token or playlist endpoint is inspected.
  */
 final class RdembedAssimPortugalAdapter implements ProviderAdapter {
 
     private static final String HOST = "v2.rdembed.sbs";
     private static final String PATH = "/assimeportugal";
+    private static final long NATIVE_CENTER_TAP_DELAY_MS = 2800L;
+    private static final long NATIVE_CENTER_TAP_RETRY_MS = 700L;
     private static final long[] DIAGNOSTIC_DELAYS_MS = {0L, 2000L, 4000L, 8000L, 12000L};
 
     private static final Set<Capability> CAPABILITIES = Collections.unmodifiableSet(
@@ -31,6 +36,7 @@ final class RdembedAssimPortugalAdapter implements ProviderAdapter {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean diagnosticsScheduled;
+    private boolean nativeCenterTapScheduled;
 
     @Override
     public String id() {
@@ -56,17 +62,20 @@ final class RdembedAssimPortugalAdapter implements ProviderAdapter {
         if (!matches(uri)) return;
         handler.removeCallbacksAndMessages(null);
         diagnosticsScheduled = false;
+        nativeCenterTapScheduled = false;
     }
 
     @Override
     public void onPageReady(WebView view, Uri uri) {
-        installAuthorizedAutomation(view, uri);
+        installAuthorizedSameOriginAutomation(view, uri);
+        scheduleNativeCenterTap(view, uri);
         scheduleDiagnostics(view, uri);
     }
 
     @Override
     public void onPageFinished(WebView view, Uri uri) {
-        installAuthorizedAutomation(view, uri);
+        installAuthorizedSameOriginAutomation(view, uri);
+        scheduleNativeCenterTap(view, uri);
         scheduleDiagnostics(view, uri);
     }
 
@@ -74,11 +83,62 @@ final class RdembedAssimPortugalAdapter implements ProviderAdapter {
     public void onLeaving(WebView view) {
         handler.removeCallbacksAndMessages(null);
         diagnosticsScheduled = false;
+        nativeCenterTapScheduled = false;
     }
 
-    private void installAuthorizedAutomation(WebView view, Uri uri) {
+    private void installAuthorizedSameOriginAutomation(WebView view, Uri uri) {
         if (view == null || !matches(uri)) return;
         view.evaluateJavascript(AUTOMATION_SCRIPT, null);
+    }
+
+    private void scheduleNativeCenterTap(WebView view, Uri uri) {
+        if (view == null || !matches(uri) || nativeCenterTapScheduled) return;
+        nativeCenterTapScheduled = true;
+        ProviderDiagnostics.recordAdapterDiagnosticIfActive("native-center-tap-scheduled");
+        handler.postDelayed(() -> performNativeCenterTap(view, true), NATIVE_CENTER_TAP_DELAY_MS);
+    }
+
+    private void performNativeCenterTap(WebView view, boolean allowRetry) {
+        if (view == null || !matchesCurrentUrl(view)) return;
+        int width = view.getWidth();
+        int height = view.getHeight();
+        if (width <= 0 || height <= 0 || !view.isShown()) {
+            if (allowRetry) {
+                ProviderDiagnostics.recordAdapterDiagnosticIfActive("native-center-tap-deferred");
+                handler.postDelayed(() -> performNativeCenterTap(view, false), NATIVE_CENTER_TAP_RETRY_MS);
+            } else {
+                ProviderDiagnostics.recordAdapterDiagnosticIfActive("native-center-tap-unhandled");
+            }
+            return;
+        }
+
+        float x = width * 0.5f;
+        float y = height * 0.5f;
+        long downTime = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0);
+        MotionEvent up = MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0);
+        boolean handled = false;
+        try {
+            view.requestFocus();
+            handled = view.onTouchEvent(down);
+            handled = view.onTouchEvent(up) || handled;
+        } catch (Exception ignored) {
+            handled = false;
+        } finally {
+            down.recycle();
+            up.recycle();
+        }
+        ProviderDiagnostics.recordAdapterDiagnosticIfActive(
+                handled ? "native-center-tap-dispatched" : "native-center-tap-unhandled");
+    }
+
+    private boolean matchesCurrentUrl(WebView view) {
+        try {
+            String raw = view.getUrl();
+            return raw != null && matches(Uri.parse(raw));
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void scheduleDiagnostics(WebView view, Uri uri) {
@@ -90,14 +150,7 @@ final class RdembedAssimPortugalAdapter implements ProviderAdapter {
     }
 
     private void captureDiagnosticSnapshot(WebView view) {
-        if (view == null) return;
-        Uri current;
-        try {
-            current = Uri.parse(view.getUrl() == null ? "" : view.getUrl());
-        } catch (Exception ignored) {
-            return;
-        }
-        if (!matches(current)) return;
+        if (view == null || !matchesCurrentUrl(view)) return;
         view.evaluateJavascript(DIAGNOSTIC_SCRIPT, this::recordDiagnosticSnapshot);
     }
 
@@ -124,8 +177,8 @@ final class RdembedAssimPortugalAdapter implements ProviderAdapter {
     private static final String AUTOMATION_SCRIPT =
             "(function(){try{"
                     + "if(location.hostname!=='v2.rdembed.sbs'||location.pathname.replace(/\\/$/,'')!=='/assimeportugal')return;"
-                    + "if(window.__liveTvRdembedAutomationV1633)return;"
-                    + "window.__liveTvRdembedAutomationV1633=true;window.__liveTvRdembedClickAttempts=0;"
+                    + "if(window.__liveTvRdembedAutomationV1634)return;"
+                    + "window.__liveTvRdembedAutomationV1634=true;window.__liveTvRdembedClickAttempts=0;"
                     + "function visible(el){if(!el)return false;var s=getComputedStyle(el),r=el.getBoundingClientRect();"
                     + "return s.display!=='none'&&s.visibility!=='hidden'&&s.pointerEvents!=='none'&&r.width>0&&r.height>0;}"
                     + "function playing(){var v=document.getElementById('channel-player');return !!(v&&!v.paused&&!v.ended&&v.readyState>=2);}"
