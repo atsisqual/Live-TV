@@ -67,6 +67,29 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("CookieManager.getCookie", diagnostics)
         self.assertNotIn("getQueryParameter", diagnostics)
 
+    def test_rdembed_http_network_and_ui_state_diagnostics_are_redacted(self):
+        main = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "MainActivity.java").read_text(encoding="utf-8")
+        diagnostics = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "ProviderDiagnostics.java").read_text(encoding="utf-8")
+
+        self.assertIn("recordRequestErrorIfActive", main)
+        self.assertIn('"http-" + errorResponse.getStatusCode()', main)
+        self.assertIn('"net(" + error.getErrorCode() + ")"', main)
+        self.assertIn("recordUiStateIfActive", main)
+        self.assertIn('"fullscreen-enter"', main)
+        self.assertIn('"fullscreen-exit"', main)
+        self.assertIn('"window-focus"', main)
+        self.assertIn('"window-blur"', main)
+
+        self.assertIn("activeInstance", diagnostics)
+        self.assertIn("normalizedErrorKind", diagnostics)
+        self.assertIn("normalizedUiState", diagnostics)
+        self.assertIn("native-main-", diagnostics)
+        self.assertIn("native-http/native-net", diagnostics)
+        self.assertIn("ui-*", diagnostics)
+        self.assertNotIn("getRequestHeaders", diagnostics)
+        self.assertNotIn("CookieManager.getCookie", diagnostics)
+        self.assertNotIn("getQueryParameter", diagnostics)
+
     def test_native_diagnostics_do_not_change_request_policy(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "MainActivity.java").read_text(encoding="utf-8")
         self.assertIn("if (isBlocked(uri)) return emptyResponse();", main)
@@ -91,8 +114,8 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
 
     def test_release_version(self):
         gradle = (ROOT / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 54", gradle)
-        self.assertIn("versionName '1.6.27'", gradle)
+        self.assertIn("versionCode 55", gradle)
+        self.assertIn("versionName '1.6.28'", gradle)
 
 
 if __name__ == "__main__":

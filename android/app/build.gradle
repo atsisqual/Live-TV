@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.27 correlates rdembed WebView touches with hostname-only native request diagnostics.
-        versionCode 54
-        versionName '1.6.27'
+        // v1.6.28 adds rdembed-only HTTP/network failure and player visibility diagnostics.
+        versionCode 55
+        versionName '1.6.28'
     }
 
     buildFeatures {

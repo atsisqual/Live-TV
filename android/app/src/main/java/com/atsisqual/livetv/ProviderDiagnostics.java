@@ -32,6 +32,7 @@ final class ProviderDiagnostics {
     private static final String RDEMBED_HOST = "v2.rdembed.sbs";
     private static final int MAX_EVENTS = 80;
     private static final int MAX_RECORDED_TOUCHES = 12;
+    private static volatile ProviderDiagnostics activeInstance;
 
     private final Activity activity;
     private final Object lock = new Object();
@@ -47,6 +48,17 @@ final class ProviderDiagnostics {
 
     ProviderDiagnostics(Activity activity) {
         this.activity = activity;
+        activeInstance = this;
+    }
+
+    static void recordRequestErrorIfActive(String rawHost, String rawKind, boolean mainFrame) {
+        ProviderDiagnostics current = activeInstance;
+        if (current != null) current.recordRequestError(rawHost, rawKind, mainFrame);
+    }
+
+    static void recordUiStateIfActive(String rawState) {
+        ProviderDiagnostics current = activeInstance;
+        if (current != null) current.recordUiState(rawState);
     }
 
     void onPageStarted(WebView view, String url) {
@@ -122,6 +134,39 @@ final class ProviderDiagnostics {
         if (recorded) Log.d(TAG, "+" + elapsed + "ms user-touch " + host);
     }
 
+    private void recordRequestError(String rawHost, String rawKind, boolean mainFrame) {
+        String host = normalizedHostValue(rawHost);
+        String kind = normalizedErrorKind(rawKind);
+        if (host == null || kind == null) return;
+
+        long elapsed;
+        String displayKind = (mainFrame ? "native-main-" : "native-") + kind;
+        synchronized (lock) {
+            if (!sessionActive || !rdembedSessionActive || entries.size() >= MAX_EVENTS) return;
+            String key = "native-error:" + nativePhase + '|' + displayKind + '|' + host;
+            if (!seen.add(key)) return;
+            elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartedAt);
+            entries.add(new Entry(elapsed, displayKind, host));
+        }
+        Log.d(TAG, "+" + elapsed + "ms " + displayKind + " " + host);
+    }
+
+    private void recordUiState(String rawState) {
+        String state = normalizedUiState(rawState);
+        if (state == null) return;
+
+        long elapsed;
+        String displayKind = "ui-" + state;
+        synchronized (lock) {
+            if (!sessionActive || !rdembedSessionActive || entries.size() >= MAX_EVENTS) return;
+            String key = "ui:" + nativePhase + '|' + displayKind;
+            if (!seen.add(key)) return;
+            elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartedAt);
+            entries.add(new Entry(elapsed, displayKind, RDEMBED_HOST));
+        }
+        Log.d(TAG, "+" + elapsed + "ms " + displayKind + " " + RDEMBED_HOST);
+    }
+
     void showReport() {
         activity.runOnUiThread(() -> {
             String report = buildReport();
@@ -136,6 +181,7 @@ final class ProviderDiagnostics {
 
     void destroy() {
         attachedView = null;
+        if (activeInstance == this) activeInstance = null;
         synchronized (lock) {
             entries.clear();
             seen.clear();
@@ -538,6 +584,28 @@ final class ProviderDiagnostics {
         return null;
     }
 
+    private String normalizedErrorKind(String rawKind) {
+        if (rawKind == null) return null;
+        String value = rawKind.trim().toLowerCase(Locale.ROOT);
+        if (value.matches("http-[1-5][0-9]{2}")) return value;
+        if (value.matches("net\\(-?[0-9]{1,4}\\)")) return value;
+        return null;
+    }
+
+    private String normalizedUiState(String rawState) {
+        if (rawState == null) return null;
+        String value = rawState.trim().toLowerCase(Locale.ROOT);
+        switch (value) {
+            case "fullscreen-enter":
+            case "fullscreen-exit":
+            case "window-focus":
+            case "window-blur":
+                return value;
+            default:
+                return null;
+        }
+    }
+
     private String normalizedHostValue(String rawHost) {
         if (rawHost == null) return null;
         String host = rawHost.trim().toLowerCase(Locale.ROOT);
@@ -571,7 +639,8 @@ final class ProviderDiagnostics {
         out.append("Só são mostrados hostnames; paths e endpoints de media são omitidos.\n")
                 .append("popup(...) indica uma tentativa de abrir uma segunda janela; a política atual do WebView não é alterada.\n")
                 .append("No rdembed, frame-depth/controls/video/click são apenas estados observados; o diagnóstico não clica, bloqueia ou altera o player.\n")
-                .append("native-* vem do WebView nativo e contém apenas hostname + tipo aproximado; user-touch não guarda coordenadas.\n\n");
+                .append("native-* vem do WebView nativo e contém apenas hostname + tipo aproximado; user-touch não guarda coordenadas.\n")
+                .append("native-http/native-net mostram apenas hostname + código de erro; ui-* mostra fullscreen/foco da app.\n\n");
         for (Entry entry : snapshot) {
             out.append('+').append(entry.elapsedMs).append(" ms  ")
                     .append(entry.kind).append("  ")

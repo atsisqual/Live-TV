@@ -353,7 +353,16 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 super.onReceivedError(view, request, error);
-                if (request.isForMainFrame()) {
+                if (request != null && error != null) {
+                    String host = normalizedHost(request.getUrl());
+                    if (host != null && !host.isEmpty()) {
+                        ProviderDiagnostics.recordRequestErrorIfActive(
+                                host,
+                                "net(" + error.getErrorCode() + ")",
+                                request.isForMainFrame());
+                    }
+                }
+                if (request != null && request.isForMainFrame()) {
                     mainFrameFailed = true;
                     CharSequence description = error == null ? null : error.getDescription();
                     logNavigationStage("pageError", request.getUrl() == null ? "" : request.getUrl().toString());
@@ -366,7 +375,16 @@ public class MainActivity extends Activity {
             public void onReceivedHttpError(WebView view, WebResourceRequest request,
                                             WebResourceResponse errorResponse) {
                 super.onReceivedHttpError(view, request, errorResponse);
-                if (!request.isForMainFrame() || errorResponse == null) return;
+                if (request != null && errorResponse != null) {
+                    String host = normalizedHost(request.getUrl());
+                    if (host != null && !host.isEmpty()) {
+                        ProviderDiagnostics.recordRequestErrorIfActive(
+                                host,
+                                "http-" + errorResponse.getStatusCode(),
+                                request.isForMainFrame());
+                    }
+                }
+                if (request == null || !request.isForMainFrame() || errorResponse == null) return;
 
                 int code = errorResponse.getStatusCode();
                 if (code >= 500 || code == 404 || code == 410) {
@@ -437,7 +455,7 @@ public class MainActivity extends Activity {
     }
 
     protected void onLiveTvFullscreenChanged(boolean isFullscreen) {
-        // Hook for subclasses that need event-driven player UI updates.
+        ProviderDiagnostics.recordUiStateIfActive(isFullscreen ? "fullscreen-enter" : "fullscreen-exit");
     }
 
     protected void onLiveTvResourceObserved(String host, String kind) {
@@ -809,6 +827,7 @@ public class MainActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        ProviderDiagnostics.recordUiStateIfActive(hasFocus ? "window-focus" : "window-blur");
         if (hasFocus && fullscreen != null) hideSystemBars();
     }
 
