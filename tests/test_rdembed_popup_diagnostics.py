@@ -90,6 +90,21 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("CookieManager.getCookie", diagnostics)
         self.assertNotIn("getQueryParameter", diagnostics)
 
+    def test_rdembed_renderer_and_webview_visibility_are_observed_without_actions(self):
+        diagnostics = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "ProviderDiagnostics.java").read_text(encoding="utf-8")
+
+        self.assertIn("setWebViewRenderProcessClient", diagnostics)
+        self.assertIn("onRenderProcessUnresponsive", diagnostics)
+        self.assertIn("onRenderProcessResponsive", diagnostics)
+        self.assertIn('"renderer-unresponsive"', diagnostics)
+        self.assertIn('"renderer-responsive"', diagnostics)
+        self.assertIn("addOnGlobalLayoutListener", diagnostics)
+        self.assertIn('"web-visible"', diagnostics)
+        self.assertIn('"web-hidden"', diagnostics)
+        self.assertIn("removeOnGlobalLayoutListener", diagnostics)
+        self.assertNotIn("renderer.terminate", diagnostics)
+        self.assertNotIn("terminate()", diagnostics)
+
     def test_native_diagnostics_do_not_change_request_policy(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "java" / "com" / "atsisqual" / "livetv" / "MainActivity.java").read_text(encoding="utf-8")
         self.assertIn("if (isBlocked(uri)) return emptyResponse();", main)
@@ -114,8 +129,8 @@ class RdembedPopupDiagnosticsTests(unittest.TestCase):
 
     def test_release_version(self):
         gradle = (ROOT / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 55", gradle)
-        self.assertIn("versionName '1.6.28'", gradle)
+        self.assertIn("versionCode 56", gradle)
+        self.assertIn("versionName '1.6.29'", gradle)
 
 
 if __name__ == "__main__":
