@@ -98,42 +98,238 @@ final class ProviderDiagnostics {
     }
 
     private void injectProbe(WebView view) {
-        String script =
-                "(function(){try{"
-                        + "if(window.__liveTvProviderDiagInstalled)return;"
-                        + "window.__liveTvProviderDiagInstalled=true;"
-                        + "var sent={};"
-                        + "function bucket(k,u){try{var x=new URL(String(u||''),location.href);var p=(x.pathname||'').toLowerCase();"
-                        + "if(/\\.m3u8$/.test(p))return 'hls';if(/\\.mpd$/.test(p))return 'dash';"
-                        + "if(/\\.(m4s|ts|mp4|webm|aac|mp3)$/.test(p))return 'media';"
-                        + "return String(k||'resource').toLowerCase();}catch(e){return String(k||'resource').toLowerCase();}}"
-                        + "function send(k,u){try{var s=String(u||'');if(!s)return;var x=new URL(s,location.href);var h=String(x.hostname||'').toLowerCase();if(!h)return;"
-                        + "var key=bucket(k,s)+'|'+h;if(sent[key])return;sent[key]=1;"
-                        + "if(window.LiveTvDiag&&LiveTvDiag.event)LiveTvDiag.event(String(k||'resource'),s);}catch(e){}}"
-                        + "function scan(n){try{if(!n||n.nodeType!==1)return;"
-                        + "if(n.matches&&n.matches('iframe[src]'))send('iframe',n.src);"
-                        + "if(n.matches&&n.matches('script[src]'))send('script',n.src);"
-                        + "if(n.matches&&n.matches('source[src]'))send('media',n.src);"
-                        + "if(n.matches&&n.matches('video,audio'))send(n.tagName.toLowerCase(),n.currentSrc||n.src||'');"
-                        + "if(n.querySelectorAll)n.querySelectorAll('iframe[src],script[src],source[src],video,audio').forEach(scan);"
-                        + "}catch(e){}}"
-                        + "scan(document.documentElement);"
-                        + "try{(performance.getEntriesByType('resource')||[]).slice(-120).forEach(function(e){send('resource:'+(e.initiatorType||'other'),e.name);});}catch(e){}"
-                        + "var po=null,mo=null;"
-                        + "try{po=new PerformanceObserver(function(l){l.getEntries().forEach(function(e){send('resource:'+(e.initiatorType||'other'),e.name);});});po.observe({entryTypes:['resource']});}catch(e){}"
-                        + "try{mo=new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes&&m.addedNodes.forEach(scan);});});mo.observe(document.documentElement,{childList:true,subtree:true});}catch(e){}"
-                        + "try{var hn=String(location.hostname||'').toLowerCase();"
-                        + "if(hn==='v2.rdembed.sbs'){"
-                        + "var lastGesture=0;"
-                        + "['pointerdown','mousedown','touchstart','click','keydown'].forEach(function(t){document.addEventListener(t,function(){lastGesture=Date.now();},true);});"
-                        + "var originalOpen=window.open;"
-                        + "window.open=function(u){try{var k=((Date.now()-lastGesture)<=1200)?'popup:gesture':'popup:script';send(k,u||location.href);}catch(e){}"
-                        + "try{return originalOpen.apply(window,arguments);}catch(e){return null;}};"
-                        + "document.addEventListener('click',function(ev){try{var n=ev.target;var a=n&&n.closest?n.closest('a[target=\"_blank\"],a[target=\"_new\"]'):null;"
-                        + "if(a)send('popup:link',a.href||location.href);}catch(e){}},true);"
-                        + "}}catch(e){}"
-                        + "setTimeout(function(){try{if(po)po.disconnect();}catch(e){}try{if(mo)mo.disconnect();}catch(e){}},15000);"
-                        + "}catch(e){}})();";
+        String script = """
+                (function(){try{
+                  if(window.__liveTvProviderDiagInstalled)return;
+                  window.__liveTvProviderDiagInstalled=true;
+                  var sent={};
+
+                  function bucket(k,u){
+                    try{
+                      var x=new URL(String(u||''),location.href);
+                      var p=String(x.pathname||'').toLowerCase();
+                      if(p.endsWith('.m3u8'))return 'hls';
+                      if(p.endsWith('.mpd'))return 'dash';
+                      if(['.m4s','.ts','.mp4','.webm','.aac','.mp3'].some(function(ext){return p.endsWith(ext);}))return 'media';
+                      return String(k||'resource').toLowerCase();
+                    }catch(e){return String(k||'resource').toLowerCase();}
+                  }
+
+                  function send(k,u){
+                    try{
+                      var s=String(u||'');
+                      if(!s)return;
+                      var x=new URL(s,location.href);
+                      var h=String(x.hostname||'').toLowerCase();
+                      if(!h)return;
+                      var key=bucket(k,s)+'|'+h;
+                      if(sent[key])return;
+                      sent[key]=1;
+                      if(window.LiveTvDiag&&LiveTvDiag.event)LiveTvDiag.event(String(k||'resource'),s);
+                    }catch(e){}
+                  }
+
+                  function sendState(kind){
+                    try{
+                      var k='state:'+String(kind||'');
+                      if(sent[k])return;
+                      sent[k]=1;
+                      if(window.LiveTvDiag&&LiveTvDiag.event){
+                        LiveTvDiag.event(k,'https://v2.rdembed.sbs/');
+                      }
+                    }catch(e){}
+                  }
+
+                  function scan(n){
+                    try{
+                      if(!n||n.nodeType!==1)return;
+                      if(n.matches&&n.matches('iframe[src]'))send('iframe',n.src);
+                      if(n.matches&&n.matches('script[src]'))send('script',n.src);
+                      if(n.matches&&n.matches('source[src]'))send('media',n.src);
+                      if(n.matches&&n.matches('video,audio'))send(n.tagName.toLowerCase(),n.currentSrc||n.src||'');
+                      if(n.querySelectorAll)n.querySelectorAll('iframe[src],script[src],source[src],video,audio').forEach(scan);
+                    }catch(e){}
+                  }
+
+                  scan(document.documentElement);
+                  try{
+                    (performance.getEntriesByType('resource')||[]).slice(-120).forEach(function(e){
+                      send('resource:'+(e.initiatorType||'other'),e.name);
+                    });
+                  }catch(e){}
+
+                  var po=null,mo=null;
+                  try{
+                    po=new PerformanceObserver(function(l){
+                      l.getEntries().forEach(function(e){send('resource:'+(e.initiatorType||'other'),e.name);});
+                    });
+                    po.observe({entryTypes:['resource']});
+                  }catch(e){}
+                  try{
+                    mo=new MutationObserver(function(ms){
+                      ms.forEach(function(m){m.addedNodes&&m.addedNodes.forEach(scan);});
+                    });
+                    mo.observe(document.documentElement,{childList:true,subtree:true});
+                  }catch(e){}
+
+                  try{
+                    var hn=String(location.hostname||'').toLowerCase();
+                    if(hn==='v2.rdembed.sbs'){
+                      var lastGesture=0;
+                      ['pointerdown','mousedown','touchstart','click','keydown'].forEach(function(t){
+                        document.addEventListener(t,function(){lastGesture=Date.now();},true);
+                      });
+                      var originalOpen=window.open;
+                      window.open=function(u){
+                        try{
+                          var k=((Date.now()-lastGesture)<=1200)?'popup:gesture':'popup:script';
+                          send(k,u||location.href);
+                        }catch(e){}
+                        try{return originalOpen.apply(window,arguments);}catch(e){return null;}
+                      };
+                      document.addEventListener('click',function(ev){
+                        try{
+                          var n=ev.target;
+                          var a=n&&n.closest?n.closest('a[target="_blank"],a[target="_new"]'):null;
+                          if(a)send('popup:link',a.href||location.href);
+                        }catch(e){}
+                      },true);
+
+                      var watchedDocs=new WeakSet();
+                      var watchedFrames=new WeakSet();
+                      var watchedMedia=new WeakSet();
+
+                      function visible(el,win){
+                        try{
+                          if(!el||!win)return false;
+                          var cs=win.getComputedStyle(el);
+                          if(!cs||cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity||1)===0)return false;
+                          var r=el.getBoundingClientRect();
+                          return r.width>1&&r.height>1;
+                        }catch(e){return false;}
+                      }
+
+                      function adVisible(doc){
+                        try{
+                          var body=doc&&doc.body;
+                          if(!body)return false;
+                          var t=String(body.innerText||body.textContent||'').toLowerCase();
+                          return t.indexOf('pular anúncio')>=0||t.indexOf('skip ad')>=0||
+                                 t.indexOf('advertisement')>=0||t.indexOf('ad :')>=0||t.indexOf('ad:')>=0;
+                        }catch(e){return false;}
+                      }
+
+                      function watchMediaElement(media){
+                        try{
+                          if(!media||watchedMedia.has(media))return;
+                          watchedMedia.add(media);
+                          sendState('video-created');
+                          ['play','loadedmetadata','canplay','playing','waiting','stalled','error'].forEach(function(name){
+                            media.addEventListener(name,function(){sendState('media-'+name);});
+                          });
+                        }catch(e){}
+                      }
+
+                      function inspectFrame(frame,depth){
+                        try{
+                          var win=frame.contentWindow;
+                          var doc=frame.contentDocument;
+                          if(!win||!doc)return;
+                          var frameHost=String(win.location.hostname||'').toLowerCase();
+                          if(frameHost!=='v2.rdembed.sbs')return;
+                          sendState('frame-ready');
+                          watchDocument(doc,depth+1);
+                        }catch(e){}
+                      }
+
+                      function watchFrame(frame,depth){
+                        try{
+                          if(!frame)return;
+                          if(!watchedFrames.has(frame)){
+                            watchedFrames.add(frame);
+                            frame.addEventListener('load',function(){inspectFrame(frame,depth);});
+                          }
+                          inspectFrame(frame,depth);
+                        }catch(e){}
+                      }
+
+                      function watchDocument(doc,depth){
+                        try{
+                          if(!doc||watchedDocs.has(doc))return;
+                          watchedDocs.add(doc);
+                          var win=doc.defaultView;
+                          if(!win)return;
+
+                          var adWasVisible=false;
+                          var uiQueued=false;
+
+                          function updateUi(){
+                            uiQueued=false;
+                            try{
+                              var play=doc.querySelector('#center-play-btn,.center-play-btn');
+                              if(play&&visible(play,win))sendState('play-visible');
+                              var nowAd=adVisible(doc);
+                              if(nowAd&&!adWasVisible)sendState('ad-visible');
+                              if(!nowAd&&adWasVisible)sendState('ad-hidden');
+                              adWasVisible=nowAd;
+                            }catch(e){}
+                          }
+
+                          function queueUi(){
+                            if(uiQueued)return;
+                            uiQueued=true;
+                            try{win.requestAnimationFrame(updateUi);}catch(e){setTimeout(updateUi,0);}
+                          }
+
+                          function scanDocNode(node){
+                            try{
+                              if(!node||node.nodeType!==1)return;
+                              if(node.matches&&node.matches('video,audio'))watchMediaElement(node);
+                              if(node.matches&&node.matches('iframe'))watchFrame(node,depth);
+                              if(node.querySelectorAll){
+                                node.querySelectorAll('video,audio').forEach(watchMediaElement);
+                                node.querySelectorAll('iframe').forEach(function(f){watchFrame(f,depth);});
+                              }
+                            }catch(e){}
+                          }
+
+                          doc.addEventListener('click',function(ev){
+                            try{
+                              var n=ev.target;
+                              var play=n&&n.closest?n.closest('#center-play-btn,.center-play-btn'):null;
+                              if(play)sendState('play-click');
+                            }catch(e){}
+                          },true);
+
+                          scanDocNode(doc.documentElement);
+                          updateUi();
+
+                          var observer=null;
+                          try{
+                            var Observer=win.MutationObserver||MutationObserver;
+                            observer=new Observer(function(ms){
+                              ms.forEach(function(m){
+                                m.addedNodes&&m.addedNodes.forEach(scanDocNode);
+                              });
+                              queueUi();
+                            });
+                            observer.observe(doc.documentElement,{childList:true,subtree:true,attributes:true,characterData:true});
+                          }catch(e){}
+
+                          setTimeout(function(){try{if(observer)observer.disconnect();}catch(e){}},20000);
+                        }catch(e){}
+                      }
+
+                      watchDocument(document,0);
+                    }
+                  }catch(e){}
+
+                  setTimeout(function(){
+                    try{if(po)po.disconnect();}catch(e){}
+                    try{if(mo)mo.disconnect();}catch(e){}
+                  },15000);
+                }catch(e){}})();
+                """;
         try {
             view.evaluateJavascript(script, null);
         } catch (Exception ignored) {}
@@ -171,6 +367,10 @@ final class ProviderDiagnostics {
         }
 
         String kind = rawKind == null ? "resource" : rawKind.trim().toLowerCase(Locale.ROOT);
+        if (kind.startsWith("state:")) {
+            String state = classifyRdembedState(kind.substring("state:".length()));
+            if (state != null) return state;
+        }
         if (kind.startsWith("resource:")) kind = kind.substring("resource:".length());
         if (kind.equals("popup:gesture")) return "popup(user)";
         if (kind.equals("popup:script")) return "popup(script)";
@@ -186,6 +386,27 @@ final class ProviderDiagnostics {
         return "resource";
     }
 
+    private String classifyRdembedState(String state) {
+        switch (state) {
+            case "frame-ready":
+            case "play-visible":
+            case "play-click":
+            case "ad-visible":
+            case "ad-hidden":
+            case "video-created":
+            case "media-play":
+            case "media-loadedmetadata":
+            case "media-canplay":
+            case "media-playing":
+            case "media-waiting":
+            case "media-stalled":
+            case "media-error":
+                return state;
+            default:
+                return null;
+        }
+    }
+
     private String buildReport() {
         List<Entry> snapshot;
         synchronized (lock) {
@@ -198,7 +419,8 @@ final class ProviderDiagnostics {
 
         StringBuilder out = new StringBuilder();
         out.append("Só são mostrados hostnames; paths e endpoints de media são omitidos.\n")
-                .append("popup(...) indica uma tentativa de abrir uma segunda janela; a política atual do WebView não é alterada.\n\n");
+                .append("popup(...) indica uma tentativa de abrir uma segunda janela; a política atual do WebView não é alterada.\n")
+                .append("No rdembed, frame/play/ad/media são apenas estados observados; o diagnóstico não clica, bloqueia ou altera o player.\n\n");
         for (Entry entry : snapshot) {
             out.append('+').append(entry.elapsedMs).append(" ms  ")
                     .append(entry.kind).append("  ")
