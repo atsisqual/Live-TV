@@ -9,6 +9,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
 import android.view.View;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -72,6 +73,10 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
     private boolean externalLogoSupportInjected;
     private String externalLogoScript;
     private ProviderDiagnostics providerDiagnostics;
+    private final Map<String, String> providerProfilesByUrl = new HashMap<>();
+    private volatile String activeProviderProfile = ProviderProfiles.GENERIC;
+    private WebView providerProfileBridgeView;
+    private boolean providerProfileBridgeInstalled;
 
     @Override
     protected void onLiveTvPageStarted(WebView view, String url) {
@@ -80,6 +85,8 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
 
         if (isHomeUrl(url)) {
             externalLogoSupportInjected = false;
+            activeProviderProfile = ProviderProfiles.GENERIC;
+            providerProfilesByUrl.clear();
             logoHandler.removeCallbacksAndMessages(null);
         }
         preconfirmSelection(url);
@@ -93,7 +100,10 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
         providerDiagnostics.onPageReady(view, url);
         preconfirmSelection(url);
         super.onLiveTvPageCommitVisible(view, url);
-        if (isHomeUrl(url)) injectExternalLogoSupport(view);
+        if (isHomeUrl(url)) {
+            installProviderProfileBridge(view);
+            injectExternalLogoSupport(view);
+        }
         installDiagnosticShortcuts();
     }
 
@@ -104,6 +114,7 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
         preconfirmSelection(url);
         super.onLiveTvPageFinished(view, url);
         if (isHomeUrl(url)) {
+            installProviderProfileBridge(view);
             injectExternalLogoSupport(view);
             scheduleImportedLogoSync(view);
         }
@@ -138,6 +149,69 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
 
     private boolean isHomeUrl(String url) {
         return url != null && url.startsWith(HOME_URL);
+    }
+
+    private void installProviderProfileBridge(WebView view) {
+        if (view == null) return;
+        providerProfileBridgeView = view;
+        if (providerProfileBridgeInstalled) return;
+        try {
+            view.addJavascriptInterface(new ProviderProfileBridge(), "LiveTvProviderProfile");
+            providerProfileBridgeInstalled = true;
+        } catch (Exception ignored) {}
+    }
+
+    private final class ProviderProfileBridge {
+        @JavascriptInterface
+        public void select(String profile, String sourceUrl) {
+            WebView view = providerProfileBridgeView;
+            logoHandler.post(() -> {
+                // External pages retain the JS interface, so only the local home is
+                // allowed to select a profile for the next navigation.
+                if (view == null || !isHomeUrl(view.getUrl())) return;
+                activeProviderProfile = ProviderProfiles.resolveForSource(profile, sourceUrl);
+            });
+        }
+    }
+
+    private void rememberProviderProfiles(Map<String, String> profiles) {
+        providerProfilesByUrl.clear();
+        if (profiles == null) return;
+        for (Map.Entry<String, String> entry : profiles.entrySet()) {
+            String url = safe(entry.getKey());
+            if (url.isEmpty()) continue;
+            providerProfilesByUrl.put(
+                    url,
+                    ProviderProfiles.resolveForSource(entry.getValue(), url)
+            );
+        }
+    }
+
+    private void activateProfileForChannelUrl(String channelUrl) {
+        String direct = providerProfilesByUrl.get(channelUrl);
+        if (direct != null) {
+            activeProviderProfile = direct;
+            return;
+        }
+        try {
+            for (Map.Entry<String, String> entry : providerProfilesByUrl.entrySet()) {
+                if (matches(entry.getKey(), channelUrl)) {
+                    activeProviderProfile = entry.getValue();
+                    return;
+                }
+            }
+        } catch (Exception ignored) {}
+        activeProviderProfile = ProviderProfiles.GENERIC;
+    }
+
+    protected String getActiveProviderProfile() {
+        return activeProviderProfile;
+    }
+
+    protected boolean activeProfileAllowsPage(String profile, String url) {
+        String normalized = ProviderProfiles.normalize(profile);
+        return normalized.equals(activeProviderProfile)
+                && ProviderProfiles.allowsPage(normalized, url);
     }
 
     private void injectExternalLogoSupport(WebView view) {
@@ -177,7 +251,7 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
                         + "return allItems().filter(function(x){return x&&x.url;}).map(function(x){"
                         + "var logo='';"
                         + "try{logo=(typeof pickLogo==='function'?pickLogo(x):(x.logo_dark||x.logo||x.logo_light||''));}catch(e){}"
-                        + "return {url:String(x.url||''),logo:String(logo||'')};"
+                        + "return {url:String(x.url||''),logo:String(logo||''),provider_profile:String(x.provider_profile||'generic')};"
                         + "});"
                         + "}catch(e){return [];}})()";
 
@@ -185,16 +259,20 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
             try {
                 JSONArray items = new JSONArray(value == null || value.trim().isEmpty() ? "[]" : value);
                 Map<String, String> logos = new HashMap<>();
+                Map<String, String> profiles = new HashMap<>();
                 Set<String> preload = new HashSet<>();
                 for (int i = 0; i < items.length(); i++) {
                     JSONObject item = items.optJSONObject(i);
                     if (item == null) continue;
                     String url = item.optString("url", "").trim();
                     String logo = item.optString("logo", "").trim();
+                    String profile = item.optString("provider_profile", "generic").trim();
+                    if (!url.isEmpty()) profiles.put(url, profile);
                     if (url.isEmpty() || logo.isEmpty()) continue;
                     logos.put(url, logo);
                     if (logo.regionMatches(true, 0, "data:image/", 0, 11)) preload.add(logo);
                 }
+                rememberProviderProfiles(profiles);
                 if (logos.isEmpty()) return;
 
                 logoPreloader.execute(() -> {
@@ -325,11 +403,13 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
             String currentSelection = safe(selectedChannelUrlField.get(this));
             int oldIndex = findChannelIndex(channels, currentSelection);
             int newIndex = findChannelIndex(channels, activeUrl.trim());
-            if (newIndex < 0 || newIndex == oldIndex) return;
+            if (newIndex < 0) return;
 
             prepareChannelItemReflection(channels.get(newIndex).getClass());
             String confirmedUrl = safe(channelItemUrlField.get(channels.get(newIndex)));
             if (confirmedUrl.isEmpty()) return;
+            activateProfileForChannelUrl(confirmedUrl);
+            if (newIndex == oldIndex) return;
 
             selectedChannelUrlField.set(this, confirmedUrl);
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
@@ -429,6 +509,9 @@ public class SyncedEpgMainActivity extends EpgMainActivity {
     @Override
     protected void onDestroy() {
         logoHandler.removeCallbacksAndMessages(null);
+        providerProfilesByUrl.clear();
+        activeProviderProfile = ProviderProfiles.GENERIC;
+        providerProfileBridgeView = null;
         logoPreloader.shutdownNow();
         if (providerDiagnostics != null) providerDiagnostics.destroy();
         super.onDestroy();
