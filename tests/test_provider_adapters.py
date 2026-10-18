@@ -28,7 +28,7 @@ class ProviderAdapterArchitectureTests(unittest.TestCase):
         self.assertIn('PATH = "/assimeportugal"', source)
         self.assertIn("Capability.AUTOSTART", source)
         self.assertIn("Capability.AD_SUPPRESSION", source)
-        self.assertIn("#center-play-btn".replace("#", "center-play-btn"), source)
+        self.assertIn("center-play-btn", source)
         self.assertIn("[0,4000,8000]", source)
         self.assertIn("MutationObserver", source)
         self.assertIn("skip ad", source)
