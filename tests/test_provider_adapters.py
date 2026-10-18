@@ -22,7 +22,7 @@ class ProviderAdapterArchitectureTests(unittest.TestCase):
         for provider in ("apitotal", "comeumamao", "wideiptv", "dlhd"):
             self.assertNotIn(provider, source.lower())
 
-    def test_authorized_adapter_is_exact_scope_and_same_origin_only(self):
+    def test_authorized_adapter_is_exact_scope_and_bounded(self):
         source = (JAVA / "RdembedAssimPortugalAdapter.java").read_text(encoding="utf-8")
         self.assertIn('HOST = "v2.rdembed.sbs"', source)
         self.assertIn('PATH = "/assimeportugal"', source)
@@ -33,12 +33,29 @@ class ProviderAdapterArchitectureTests(unittest.TestCase):
         self.assertIn("MutationObserver", source)
         self.assertIn("skip ad", source)
         self.assertIn("pular anuncio", source)
-        self.assertNotIn("contentDocument", source)
+        self.assertIn("DIAGNOSTIC_DELAYS_MS", source)
+        self.assertIn("contentDocument", source)
+        self.assertIn("play-depth-", source)
+        self.assertIn("click-attempts-", source)
+        self.assertIn("same-origin-frames-", source)
+        self.assertIn("cross-origin-frames-", source)
         self.assertNotIn("contentWindow", source)
         self.assertNotIn("getRequestHeaders", source)
         self.assertNotIn("CookieManager", source)
         self.assertNotIn(".m3u8", source)
         self.assertNotIn(".mpd", source)
+        self.assertNotIn("src", source.lower().replace("resource", ""))
+
+    def test_adapter_diagnostics_are_whitelisted_before_report(self):
+        diagnostics = (JAVA / "ProviderDiagnostics.java").read_text(encoding="utf-8")
+        self.assertIn("recordAdapterDiagnosticIfActive", diagnostics)
+        self.assertIn("normalizedAdapterState", diagnostics)
+        self.assertIn('"adapter-" + state', diagnostics)
+        self.assertIn("same-origin", diagnostics)
+        self.assertIn("cross-origin", diagnostics)
+        self.assertNotIn("getRequestHeaders", diagnostics)
+        self.assertNotIn("CookieManager.getCookie", diagnostics)
+        self.assertNotIn("getQueryParameter", diagnostics)
 
     def test_launcher_wires_adapter_session_without_replacing_stable_activity(self):
         adapter = (JAVA / "AdapterEpgMainActivity.java").read_text(encoding="utf-8")
@@ -59,8 +76,8 @@ class ProviderAdapterArchitectureTests(unittest.TestCase):
 
     def test_release_version(self):
         gradle = (ROOT / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 59", gradle)
-        self.assertIn("versionName '1.6.32'", gradle)
+        self.assertIn("versionCode 60", gradle)
+        self.assertIn("versionName '1.6.33'", gradle)
 
 
 if __name__ == "__main__":
