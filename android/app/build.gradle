@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.26 maps rdembed frame depth and generic click classes without changing playback behavior.
-        versionCode 53
-        versionName '1.6.26'
+        // v1.6.27 correlates rdembed WebView touches with hostname-only native request diagnostics.
+        versionCode 54
+        versionName '1.6.27'
     }
 
     buildFeatures {
