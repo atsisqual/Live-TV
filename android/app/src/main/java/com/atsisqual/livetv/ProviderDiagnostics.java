@@ -215,7 +215,7 @@ final class ProviderDiagnostics {
                           if(!body)return false;
                           var t=String(body.innerText||body.textContent||'').toLowerCase();
                           return t.indexOf('pular anúncio')>=0||t.indexOf('skip ad')>=0||
-                                 t.indexOf('advertisement')>=0||/\bad\s*:\s*\(?\d/.test(t);
+                                 t.indexOf('advertisement')>=0||t.indexOf('ad :')>=0||t.indexOf('ad:')>=0;
                         }catch(e){return false;}
                       }
 
