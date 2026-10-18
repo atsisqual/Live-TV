@@ -17,9 +17,9 @@ android {
         minSdk 23
         targetSdk 35
         // Release version is the single source of truth for the publishing workflow.
-        // v1.6.25 adds rdembed same-origin frame state diagnostics without changing playback behavior.
-        versionCode 52
-        versionName '1.6.25'
+        // v1.6.26 maps rdembed frame depth and generic click classes without changing playback behavior.
+        versionCode 53
+        versionName '1.6.26'
     }
 
     buildFeatures {
